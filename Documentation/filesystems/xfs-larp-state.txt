@@ -1,0 +1,103 @@
+/'
+PlantUML documentation:
+Getting started - https://plantuml.com/starting
+State diagram - https://plantuml.com/state-diagram
+'/
+
+@startuml
+
+state REMOTE_ADD {
+	XFS_DAS_..._SET_RMT : find space for remote blocks
+	XFS_DAS_..._ALLOC_RMT : allocate blocks and set remote value
+
+	XFS_DAS_..._SET_RMT --> XFS_DAS_..._ALLOC_RMT
+}
+
+state ADD {
+	XFS_DAS_SF_ADD : add attr to shortform fork
+	XFS_DAS_LEAF_ADD : add attr to inode in leaf form
+	XFS_DAS_NODE_ADD : add attr to node format attribute tree
+
+	state add_entry <<entryPoint>>
+	state add_form <<choice>>
+	add_entry --> add_form
+	add_form --> XFS_DAS_SF_ADD : short form
+	add_form --> XFS_DAS_LEAF_ADD : leaf form
+	add_form --> XFS_DAS_NODE_ADD : node form
+
+	XFS_DAS_SF_ADD --> XFS_DAS_LEAF_ADD : Full or too large
+	XFS_DAS_LEAF_ADD --> XFS_DAS_NODE_ADD : full or too large
+
+	XFS_DAS_LEAF_ADD --> XFS_DAS_..._SET_RMT : remote xattr
+	XFS_DAS_NODE_ADD --> XFS_DAS_..._SET_RMT : remote xattr
+}
+
+state REMOVE {
+	XFS_DAS_SF_REMOVE : remove attr from shortform fork
+	XFS_DAS_LEAF_REMOVE : remove attr from an inode in leaf form
+	XFS_DAS_NODE_REMOVE : setup for removal
+	XFS_DAS_NODE_REMOVE : (attr exists and blocks are valid)
+
+	state remove_entry <<entryPoint>>
+	state remove_form <<choice>>
+	remove_entry --> remove_form
+	remove_form --> XFS_DAS_SF_REMOVE : short form
+	remove_form --> XFS_DAS_LEAF_REMOVE : leaf form
+	remove_form --> XFS_DAS_NODE_REMOVE : node form
+}
+
+state REPLACE {
+	state replace_choice <<choice>>
+	replace_choice --> add_entry : larp disable
+	replace_choice --> remove_entry : larp enabled
+}
+
+
+state OLD_REPLACE {
+	XFS_DAS_..._REPLACE : atomic INCOMPLETE flag flip
+	XFS_DAS_..._REMOVE_OLD : restore original xattr state for remove
+	XFS_DAS_..._REMOVE_OLD : invalidate old xattr
+
+	XFS_DAS_..._REPLACE --> XFS_DAS_..._REMOVE_OLD
+}
+
+state REMOVE_XATTR {
+	XFS_DAS_..._REMOVE_RMT : remove remote attribute blocks
+	XFS_DAS_..._REMOVE_ATTR : remove attribute name from leaf/node block
+
+	state remove_xattr_choice <<choice>>
+	remove_xattr_choice --> XFS_DAS_..._REMOVE_RMT : Remote xattr
+	remove_xattr_choice --> XFS_DAS_..._REMOVE_ATTR : Local xattr
+
+	XFS_DAS_..._REMOVE_RMT --> XFS_DAS_..._REMOVE_ATTR
+}
+
+state XFS_DAS_DONE {
+}
+
+state add_done <<choice>>
+add_done -down-> XFS_DAS_DONE : Operation Complete
+add_done -up-> XFS_DAS_..._REPLACE : LARP disabled REPLACE
+XFS_DAS_SF_ADD -down-> add_done : Success
+XFS_DAS_LEAF_ADD -down-> add_done : Success
+XFS_DAS_NODE_ADD -down-> add_done : Success
+XFS_DAS_..._ALLOC_RMT -down-> add_done : Success
+
+state remove_done <<choice>>
+remove_done -down-> XFS_DAS_DONE : Operation Complete
+remove_done -up-> add_entry : LARP enabled REPLACE
+XFS_DAS_SF_REMOVE -down-> remove_done : Success
+XFS_DAS_LEAF_REMOVE -down-> remove_done : Success
+XFS_DAS_NODE_REMOVE -down-> remove_done : Success
+XFS_DAS_..._REMOVE_ATTR -down-> remove_done : Success
+
+XFS_DAS_..._REMOVE_OLD --> remove_xattr_choice
+XFS_DAS_NODE_REMOVE --> remove_xattr_choice
+
+state set_choice <<choice>>
+[*] --> set_choice
+set_choice --> add_entry : add new
+set_choice --> remove_entry : remove existing
+set_choice --> replace_choice : replace existing
+XFS_DAS_DONE --> [*]
+@enduml
