@@ -26,6 +26,7 @@
 #include "xfs_trace.h"
 #include "xfs_attr_item.h"
 #include "xfs_xattr.h"
+#include "xfs_verity.h"
 
 struct kmem_cache		*xfs_attr_intent_cache;
 
@@ -1630,6 +1631,13 @@ xfs_attr_namecheck(
 		if (length != sizeof(struct xfs_parent_name_rec))
 			return false;
 		return xfs_verify_pptr(mp, (struct xfs_parent_name_rec *)name);
+	}
+
+	if (flags & XFS_ATTR_VERITY) {
+		if (length != sizeof(__be64) &&
+				length != XFS_VERITY_DESCRIPTOR_NAME_LEN)
+			return false;
+		return true;
 	}
 
 	return xfs_str_attr_namecheck(name, length);
