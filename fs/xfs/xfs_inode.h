@@ -325,6 +325,7 @@ static inline bool xfs_inode_has_large_extent_counts(struct xfs_inode *ip)
  * plain old IRECLAIMABLE inode.
  */
 #define XFS_INACTIVATING	(1 << 13)
+#define XFS_IVERITY		(1 << 14) /* merkle tree is in progress */
 
 /* All inode state flags related to inode reclaim. */
 #define XFS_ALL_IRECLAIM_FLAGS	(XFS_IRECLAIMABLE | \
