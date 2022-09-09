@@ -833,4 +833,14 @@ struct xfs_parent_name_irec {
 	uint8_t			p_namelen;
 };
 
+/*
+ * FS verity Merkle Tree page attribute format definition
+ *
+ * EA name encodes an index of a Merkle Tree page.
+ */
+typedef __be64	xfs_mtree_idx_rec_t;
+
+/* incore version of the above */
+typedef uint64_t    xfs_mtree_idx_irec_t;
+
 #endif /* __XFS_DA_FORMAT_H__ */
