@@ -17,6 +17,7 @@
 #include <linux/bio.h>
 #include <linux/sched/signal.h>
 #include <linux/migrate.h>
+#include <linux/fsverity.h>
 #include "trace.h"
 
 #include "../internal.h"
@@ -42,6 +43,7 @@ static inline struct iomap_page *to_iomap_page(struct folio *folio)
 }
 
 static struct bio_set iomap_ioend_bioset;
+static struct bio_set iomap_readend_bioset;
 
 static struct iomap_page *
 iomap_page_create(struct inode *inode, struct folio *folio, unsigned int flags)
@@ -189,9 +191,39 @@ static void iomap_read_end_io(struct bio *bio)
 	int error = blk_status_to_errno(bio->bi_status);
 	struct folio_iter fi;
 
-	bio_for_each_folio_all(fi, bio)
+	bio_for_each_folio_all(fi, bio) {
+		/*
+		 * As fs-verity doesn't work with multi-page folios, verity
+		 * inodes have large folios disabled (only single page folios
+		 * are used)
+		 */
+		if (!error)
+			error = PageError(folio_page(fi.folio, 0));
+
 		iomap_finish_folio_read(fi.folio, fi.offset, fi.length, error);
+	}
+
 	bio_put(bio);
+	/* The iomap_readend has been freed by bio_put() */
+}
+
+static void iomap_read_work_end_io(
+	struct work_struct *work)
+{
+	struct iomap_readend *ctx =
+		container_of(work, struct iomap_readend, read_work);
+	struct bio *bio = &ctx->read_inline_bio;
+
+	fsverity_verify_bio(bio);
+	iomap_read_end_io(bio);
+}
+
+static void iomap_read_work_io(struct bio *bio)
+{
+	struct iomap_readend *ctx =
+		container_of(bio, struct iomap_readend, read_inline_bio);
+
+	fsverity_enqueue_verify_work(&ctx->read_work);
 }
 
 struct iomap_readpage_ctx {
@@ -264,6 +296,7 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 	loff_t orig_pos = pos;
 	size_t poff, plen;
 	sector_t sector;
+	struct iomap_readend *readend;
 
 	if (iomap->type == IOMAP_INLINE)
 		return iomap_read_inline_data(iter, folio);
@@ -276,7 +309,21 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 
 	if (iomap_block_needs_zeroing(iter, pos)) {
 		folio_zero_range(folio, poff, plen);
-		iomap_set_range_uptodate(folio, iop, poff, plen);
+		if (!fsverity_active(iter->inode)) {
+			iomap_set_range_uptodate(folio, iop, poff, plen);
+			goto done;
+		}
+
+		/*
+		 * As fs-verity doesn't work with folios sealed inodes have
+		 * multi-page folios disabled and we can check on first and only
+		 * page
+		 */
+		if (fsverity_verify_page(folio_page(folio, 0)))
+			iomap_set_range_uptodate(folio, iop, poff, plen);
+		else
+			folio_set_error(folio);
+
 		goto done;
 	}
 
@@ -297,8 +344,18 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 
 		if (ctx->rac) /* same as readahead_gfp_mask */
 			gfp |= __GFP_NORETRY | __GFP_NOWARN;
-		ctx->bio = bio_alloc(iomap->bdev, bio_max_segs(nr_vecs),
+		if (fsverity_active(iter->inode)) {
+			ctx->bio = bio_alloc_bioset(iomap->bdev,
+					bio_max_segs(nr_vecs), REQ_OP_READ,
+					GFP_NOFS, &iomap_readend_bioset);
+			readend = container_of(ctx->bio,
+					struct iomap_readend,
+					read_inline_bio);
+			INIT_WORK(&readend->read_work, iomap_read_work_end_io);
+		} else {
+			ctx->bio = bio_alloc(iomap->bdev, bio_max_segs(nr_vecs),
 				     REQ_OP_READ, gfp);
+		}
 		/*
 		 * If the bio_alloc fails, try it again for a single page to
 		 * avoid having to deal with partial page reads.  This emulates
@@ -311,7 +368,11 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		if (ctx->rac)
 			ctx->bio->bi_opf |= REQ_RAHEAD;
 		ctx->bio->bi_iter.bi_sector = sector;
-		ctx->bio->bi_end_io = iomap_read_end_io;
+		if (fsverity_active(iter->inode))
+			ctx->bio->bi_end_io = iomap_read_work_io;
+		else
+			ctx->bio->bi_end_io = iomap_read_end_io;
+
 		bio_add_folio(ctx->bio, folio, plen, poff);
 	}
 
@@ -1546,6 +1607,17 @@ EXPORT_SYMBOL_GPL(iomap_writepages);
 
 static int __init iomap_init(void)
 {
+#ifdef CONFIG_FS_VERITY
+	int error = 0;
+
+	error = bioset_init(&iomap_readend_bioset,
+			   4 * (PAGE_SIZE / SECTOR_SIZE),
+			   offsetof(struct iomap_readend, read_inline_bio),
+			   BIOSET_NEED_BVECS);
+	if (error)
+		return error;
+#endif
+
 	return bioset_init(&iomap_ioend_bioset, 4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_ioend, io_inline_bio),
 			   BIOSET_NEED_BVECS);
