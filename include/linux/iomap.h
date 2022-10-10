@@ -295,6 +295,11 @@ struct iomap_ioend {
 	struct bio		io_inline_bio;	/* MUST BE LAST! */
 };
 
+struct iomap_readend {
+	struct work_struct	read_work;	/* post read work (fs-verity) */
+	struct bio		read_inline_bio;/* MUST BE LAST! */
+};
+
 struct iomap_writeback_ops {
 	/*
 	 * Required, maps the blocks so that writeback can be performed on
