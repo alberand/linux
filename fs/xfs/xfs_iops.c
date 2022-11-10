@@ -1295,6 +1295,13 @@ xfs_setup_inode(
 	mapping_set_gfp_mask(inode->i_mapping, (gfp_mask & ~(__GFP_FS)));
 
 	/*
+	 * As fs-verity doesn't support folios so far, we won't enable them on
+	 * sealed inodes
+	 */
+	if (!IS_VERITY(inode))
+		mapping_set_large_folios(inode->i_mapping);
+
+	/*
 	 * If there is no attribute fork no ACL can exist on this inode,
 	 * and it can't have any file capabilities attached to it either.
 	 */
