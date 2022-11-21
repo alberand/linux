@@ -1669,6 +1669,12 @@ xfs_fs_fill_super(
 		xfs_alert(mp,
 	"EXPERIMENTAL parent pointer feature enabled. Use at your own risk!");
 
+	if (xfs_has_verity(mp) && mp->m_super->s_blocksize != PAGE_SIZE) {
+		xfs_alert(mp,
+			"Cannot use fs-verity with block size != PAGE_SIZE");
+		goto out_filestream_unmount;
+	}
+
 	error = xfs_mountfs(mp);
 	if (error)
 		goto out_filestream_unmount;
