@@ -190,15 +190,25 @@ static void iomap_read_end_io(struct bio *bio)
 {
 	int error = blk_status_to_errno(bio->bi_status);
 	struct folio_iter fi;
+	struct bio_vec *bv;
+	struct bvec_iter_all iter_all;
+	struct page *page;
+
+	bio_for_each_segment_all(bv, bio, iter_all) {
+		page = bv->bv_page;
+		if (PageError(page)) {
+			error |= PageError(page);
+		}
+	}
 
 	bio_for_each_folio_all(fi, bio) {
 		/*
 		 * As fs-verity doesn't work with multi-page folios, verity
 		 * inodes have large folios disabled (only single page folios
 		 * are used)
-		 */
 		if (!error)
 			error = PageError(folio_page(fi.folio, 0));
+		 */
 
 		iomap_finish_folio_read(fi.folio, fi.offset, fi.length, error);
 	}
