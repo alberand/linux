@@ -103,7 +103,8 @@ struct fsverity_operations {
 	 */
 	struct page *(*read_merkle_tree_page)(struct inode *inode,
 					      pgoff_t index,
-					      unsigned long num_ra_pages);
+					      unsigned long num_ra_pages,
+					      void **fs_private);
 
 	/**
 	 * Write a Merkle tree block to the given inode.
@@ -125,11 +126,12 @@ struct fsverity_operations {
 	 * Release the reference to a Merkle tree page
 	 *
 	 * @page: the page to release
+	 * @fs_private: optional filesystem context
 	 *
 	 * This is called when fs-verity is done with a page obtained with
 	 * ->read_merkle_tree_page().
 	 */
-	void (*drop_page)(struct page *page);
+	void (*drop_page)(struct page *page, void *fs_private);
 };
 
 #ifdef CONFIG_FS_VERITY

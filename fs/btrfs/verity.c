@@ -713,7 +713,8 @@ int btrfs_get_verity_descriptor(struct inode *inode, void *buf, size_t buf_size)
  */
 static struct page *btrfs_read_merkle_tree_page(struct inode *inode,
 						pgoff_t index,
-						unsigned long num_ra_pages)
+						unsigned long num_ra_pages,
+						void **fs_private)
 {
 	struct page *page;
 	u64 off = (u64)index << PAGE_SHIFT;
@@ -808,9 +809,10 @@ static int btrfs_write_merkle_tree_block(struct inode *inode, const void *buf,
  * fsverity op that releases the reference obtained by ->read_merkle_tree_page()
  *
  * @page:  reference to the page which can be released
+ * @fs_private: optional filesystem context
  *
  */
-static void btrfs_drop_page(struct page *page)
+static void btrfs_drop_page(struct page *page, void *fs_private)
 {
 	put_page(page);
 }

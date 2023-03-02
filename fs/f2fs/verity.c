@@ -256,7 +256,8 @@ static int f2fs_get_verity_descriptor(struct inode *inode, void *buf,
 
 static struct page *f2fs_read_merkle_tree_page(struct inode *inode,
 					       pgoff_t index,
-					       unsigned long num_ra_pages)
+					       unsigned long num_ra_pages,
+					       void **fs_private)
 {
 	struct page *page;
 
@@ -283,7 +284,7 @@ static int f2fs_write_merkle_tree_block(struct inode *inode, const void *buf,
 	return pagecache_write(inode, buf, size, pos);
 }
 
-static void f2fs_drop_page(struct page *page)
+static void f2fs_drop_page(struct page *page, void *fs_private)
 {
 	put_page(page);
 }

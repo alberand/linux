@@ -142,6 +142,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		unsigned int offset_in_page;
 		/* Byte offset of the wanted hash within @page */
 		unsigned int hoffset;
+		/* fs private context over page verification */
+		void *fs_private;
 	} hblocks[FS_VERITY_MAX_LEVELS];
 	/*
 	 * The index of the previous level's block within that level; also the
@@ -197,9 +199,11 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 			  ((hidx << params->log_digestsize) &
 			   (params->block_size - 1));
 
+		hblocks[level].fs_private = NULL;
 		hpage = inode->i_sb->s_vop->read_merkle_tree_page(inode,
 				hpage_idx, level == 0 ? min(max_ra_pages,
-					params->tree_pages - hpage_idx) : 0);
+					params->tree_pages - hpage_idx) : 0,
+				&hblocks[level].fs_private);
 		if (IS_ERR(hpage)) {
 			err = PTR_ERR(hpage);
 			fsverity_err(inode,
@@ -210,7 +214,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		if (is_hash_block_verified(vi, hpage, hblock_idx)) {
 			memcpy_from_page(_want_hash, hpage, hoffset, hsize);
 			want_hash = _want_hash;
-			inode->i_sb->s_vop->drop_page(hpage);
+			inode->i_sb->s_vop->drop_page(hpage,
+					hblocks[level].fs_private);
 			goto descend;
 		}
 		hblocks[level].page = hpage;
@@ -248,7 +253,8 @@ descend:
 			SetPageChecked(hpage);
 		memcpy_from_page(_want_hash, hpage, hoffset, hsize);
 		want_hash = _want_hash;
-		inode->i_sb->s_vop->drop_page(hpage);
+		inode->i_sb->s_vop->drop_page(hpage,
+				hblocks[level - 1].fs_private);
 	}
 
 	/* Finally, verify the data block. */
@@ -259,7 +265,8 @@ descend:
 	err = cmp_hashes(vi, want_hash, real_hash, data_pos, -1);
 out:
 	for (; level > 0; level--)
-		inode->i_sb->s_vop->drop_page(hblocks[level - 1].page);
+		inode->i_sb->s_vop->drop_page(hblocks[level - 1].page,
+				hblocks[level - 1].fs_private);
 
 	return err == 0;
 }

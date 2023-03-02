@@ -361,7 +361,8 @@ static int ext4_get_verity_descriptor(struct inode *inode, void *buf,
 
 static struct page *ext4_read_merkle_tree_page(struct inode *inode,
 					       pgoff_t index,
-					       unsigned long num_ra_pages)
+					       unsigned long num_ra_pages,
+					       void **fs_private)
 {
 	struct page *page;
 
@@ -388,7 +389,7 @@ static int ext4_write_merkle_tree_block(struct inode *inode, const void *buf,
 	return pagecache_write(inode, buf, size, pos);
 }
 
-static void ext4_drop_page(struct page *page)
+static void ext4_drop_page(struct page *page, void *fs_private)
 {
 	put_page(page);
 }
