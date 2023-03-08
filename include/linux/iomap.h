@@ -53,6 +53,9 @@ struct vm_fault;
  *
  * IOMAP_F_XATTR indicates that the iomap is for an extended attribute extent
  * rather than a file data extent.
+ *
+ * IOMAP_F_READ_VERITY indicates that the iomap needs verification of read
+ * folios
  */
 #define IOMAP_F_NEW		(1U << 0)
 #define IOMAP_F_DIRTY		(1U << 1)
@@ -60,6 +63,7 @@ struct vm_fault;
 #define IOMAP_F_MERGED		(1U << 3)
 #define IOMAP_F_BUFFER_HEAD	(1U << 4)
 #define IOMAP_F_XATTR		(1U << 5)
+#define IOMAP_F_READ_VERITY	(1U << 6)
 
 /*
  * Flags set by the core iomap code during operations:
@@ -258,6 +262,32 @@ int iomap_file_buffered_write_punch_delalloc(struct inode *inode,
 		struct iomap *iomap, loff_t pos, loff_t length, ssize_t written,
 		int (*punch)(struct inode *inode, loff_t pos, loff_t length));
 
+struct iomap_read_ioend {
+	struct inode		*io_inode;	/* file being read from */
+	struct work_struct	work;		/* post read work (e.g. fs-verity) */
+	struct bio		read_inline_bio;/* MUST BE LAST! */
+};
+
+struct iomap_readpage_ops {
+	/*
+	 * Optional, verify folio when successfully read
+	 */
+	int (*verify_folio)(struct folio *folio, loff_t pos, unsigned int len);
+
+	/*
+	 * Filesystems wishing to attach private information to a direct io bio
+	 * must provide a ->submit_io method that attaches the additional
+	 * information to the bio and changes the ->bi_end_io callback to a
+	 * custom function.  This function should, at a minimum, perform any
+	 * relevant post-processing of the bio and end with a call to
+	 * iomap_read_end_io.
+	 */
+	void (*submit_io)(const struct iomap_iter *iter, struct bio *bio,
+		          loff_t file_offset);
+	struct bio_set *bio_set;
+};
+
+void iomap_read_end_io(struct bio *bio);
 int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops,
 		const struct iomap_readpage_ops *readpage_ops);
 void iomap_readahead(struct readahead_control *, const struct iomap_ops *ops,
