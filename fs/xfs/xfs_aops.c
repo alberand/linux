@@ -548,19 +548,30 @@ xfs_vm_bmap(
 	return iomap_bmap(mapping, block, &xfs_read_iomap_ops);
 }
 
+static inline struct workqueue_struct *
+xfs_fsverity_wq(
+	struct address_space	*mapping)
+{
+	if (fsverity_active(mapping->host))
+		return XFS_I(mapping->host)->i_mount->m_postread_workqueue;
+	return NULL;
+}
+
 STATIC int
 xfs_vm_read_folio(
 	struct file		*unused,
 	struct folio		*folio)
 {
-	return iomap_read_folio(folio, &xfs_read_iomap_ops, NULL);
+	return iomap_read_folio(folio, &xfs_read_iomap_ops,
+				xfs_fsverity_wq(folio->mapping));
 }
 
 STATIC void
 xfs_vm_readahead(
 	struct readahead_control	*rac)
 {
-	iomap_readahead(rac, &xfs_read_iomap_ops, NULL);
+	iomap_readahead(rac, &xfs_read_iomap_ops,
+			xfs_fsverity_wq(rac->mapping));
 }
 
 static int
