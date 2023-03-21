@@ -46,6 +46,7 @@ static int fsverity_read_merkle_tree(struct inode *inode,
 		void *fs_private = NULL;
 
 		page = vops->read_merkle_tree_page(inode, index, num_ra_pages,
+						   vi->tree_params.log_blocksize,
 						   &fs_private);
 		if (IS_ERR(page)) {
 			err = PTR_ERR(page);

@@ -104,6 +104,7 @@ struct fsverity_operations {
 	struct page *(*read_merkle_tree_page)(struct inode *inode,
 					      pgoff_t index,
 					      unsigned long num_ra_pages,
+					      u8 log_blocksize,
 					      void **fs_private);
 
 	/**

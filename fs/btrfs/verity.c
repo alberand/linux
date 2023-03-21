@@ -714,6 +714,7 @@ int btrfs_get_verity_descriptor(struct inode *inode, void *buf, size_t buf_size)
 static struct page *btrfs_read_merkle_tree_page(struct inode *inode,
 						pgoff_t index,
 						unsigned long num_ra_pages,
+						u8 log_blocksize,
 						void **fs_private)
 {
 	struct page *page;
