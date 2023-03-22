@@ -136,6 +136,8 @@ xfs_read_merkle_tree_page(
 	struct page		*page = NULL;
 	__be64			name = cpu_to_be64(index << PAGE_SHIFT);
 	uint32_t bs		= 1 << log_blocksize;
+	int blocks_per_page	= (1 << (PAGE_SHIFT - log_blocksize));
+	int n			= 0;
 	struct xfs_da_args	args = {
 		.dp		= ip,
 		.attr_filter	= XFS_ATTR_VERITY,
@@ -159,10 +161,41 @@ xfs_read_merkle_tree_page(
 	if (args.bp->b_flags & XBF_VERITY_CHECKED)
 		SetPageChecked(page);
 
+	/*
+	 * Only first buffer is used to track XBF_VERITY_CHECKED state
+	 * as page is always obtained as a whole
+	 */
 	*fs_private = (void*)args.bp;
 	memcpy(page_address(page), args.value, args.valuelen);
 
-	kmem_free(args.value);
+	/*
+	 * Fill the page with Merkle tree pages. This can happen if fs block
+	 * size < PAGE_SIZE or Merkle tree block size < PAGE SIZE
+	 */
+	for (n = 1; n < blocks_per_page; n++) {
+		name = cpu_to_be64(((index << PAGE_SHIFT) + bs*n));
+		args.op_flags = 0;
+		args.name = (const uint8_t *)&name;
+		kmem_free(args.value);
+		args.value = NULL;
+
+		error = xfs_attr_get(&args);
+		/*
+		 * No more Merkle tree blocks (e.g. this was the last block of
+		 * the tree)
+		 */
+		if (error == -ENOATTR)
+			return page;
+
+		if (!error)
+			memcpy(page_address(page) + bs * n, args.value,
+					args.valuelen);
+		else {
+			kmem_free(args.value);
+			return ERR_PTR(-EFAULT);
+		}
+	}
+
 	return page;
 }
 
