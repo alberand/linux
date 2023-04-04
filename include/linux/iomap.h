@@ -296,14 +296,34 @@ static inline bool iomap_want_unshare_iter(const struct iomap_iter *iter)
 		iter->srcmap.type == IOMAP_MAPPED;
 }
 
+struct iomap_read_ioend {
+	struct inode		*io_inode;	/* file being read from */
+	u16			io_flags;	/* IOMAP_F_* */
+	size_t			io_size;	/* size of the extent */
+	loff_t			io_offset;	/* offset in the file */
+	struct work_struct	io_work;	/* post read work (e.g. fs-verity) */
+	struct bio		io_bio;		/* MUST BE LAST! */
+};
+
+struct iomap_readpage_ops {
+	/*
+	 * Optional, allows the file systems to perform actions just before
+	 * submitting the bio and/or override the bio bi_end_io handler for
+	 * additional verification after bio is processed
+	 */
+	void (*prepare_ioend)(struct iomap_read_ioend *ioend);
+};
+
 struct iomap_readpage_ctx {
 	struct folio			*cur_folio;
 	bool				cur_folio_in_bio;
 	struct bio			*bio;
 	struct readahead_control	*rac;
 	int				flags;
+	const struct iomap_readpage_ops	*ops;
 };
 
+void iomap_read_end_io(struct bio *bio);
 ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *from,
 		const struct iomap_ops *ops, void *private);
 int iomap_read_folio_ctx(struct iomap_readpage_ctx *ctx,
