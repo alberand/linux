@@ -42,7 +42,9 @@ static inline struct iomap_page *to_iomap_page(struct folio *folio)
 }
 
 static struct bio_set iomap_ioend_bioset;
+#ifdef CONFIG_FS_VERITY
 static struct bio_set iomap_read_ioend_bioset;
+#endif
 
 static struct iomap_page *
 iomap_page_create(struct inode *inode, struct folio *folio, unsigned int flags)
@@ -300,8 +302,13 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 
 		if (ctx->rac) /* same as readahead_gfp_mask */
 			gfp |= __GFP_NORETRY | __GFP_NOWARN;
+#ifdef CONFIG_FS_VERITY
 		ctx->bio = bio_alloc_bioset(iomap->bdev, bio_max_segs(nr_vecs),
 				REQ_OP_READ, GFP_NOFS, &iomap_read_ioend_bioset);
+#else
+		ctx->bio = bio_alloc(iomap->bdev, bio_max_segs(nr_vecs),
+				REQ_OP_READ, gfp);
+#endif
 		/*
 		 * If the bio_alloc fails, try it again for a single page to
 		 * avoid having to deal with partial page reads.  This emulates
@@ -316,11 +323,13 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		ctx->bio->bi_iter.bi_sector = sector;
 		ctx->bio->bi_end_io = iomap_read_end_io;
 
+#ifdef CONFIG_FS_VERITY
 		ioend = container_of(ctx->bio, struct iomap_read_ioend,
 				read_inline_bio);
 		ioend->io_inode = iter->inode;
 		if (ctx->ops && ctx->ops->prepare_ioend)
 			ctx->ops->prepare_ioend(ioend);
+#endif
 
 		bio_add_folio(ctx->bio, folio, plen, poff);
 	}
@@ -1832,12 +1841,14 @@ static int __init iomap_init(void)
 {
 	int error = 0;
 
+#ifdef CONFIG_FS_VERITY
 	error = bioset_init(&iomap_read_ioend_bioset,
 			   4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_read_ioend, read_inline_bio),
 			   BIOSET_NEED_BVECS);
 	if (error)
 		return error;
+#endif
 
 	return bioset_init(&iomap_ioend_bioset, 4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_ioend, io_inline_bio),
