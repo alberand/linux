@@ -144,4 +144,31 @@ static inline void fsverity_init_signature(void)
 
 void __init fsverity_init_workqueue(void);
 
+/**
+ * fsverity_drop_block() - drop block obtained with ->read_merkle_tree_block()
+ * @inode: inode in use for verification or metadata reading
+ * @block: block to be dropped
+ *
+ * Calls out back to filesystem if ->drop_block() is set, otherwise, drop the
+ * reference in the block->context.
+ */
+void fsverity_drop_block(struct inode *inode,
+			 struct fsverity_blockbuf *block);
+
+/**
+ * fsverity_read_block_from_page() - general function to read Merkle tree block
+ * @inode: inode in use for verification or metadata reading
+ * @pos: byte offset of the block within the Merkle tree
+ * @block: block to read
+ * @num_ra_pages: number of pages to readahead, may be ignored
+ *
+ * Depending on fs implementation use read_merkle_tree_block() or
+ * read_merkle_tree_page() to read blocks.
+ */
+int fsverity_read_merkle_tree_block(struct inode *inode,
+				    u64 pos,
+				    struct fsverity_blockbuf *block,
+				    unsigned int log_blocksize,
+				    unsigned long num_ra_pages);
+
 #endif /* _FSVERITY_PRIVATE_H */

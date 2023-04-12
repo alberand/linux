@@ -13,69 +13,18 @@
 static struct workqueue_struct *fsverity_read_workqueue;
 
 /*
- * Returns true if the hash block with index @hblock_idx in the tree, located in
- * @hpage, has already been verified.
+ * Returns true if the hash block with index @hblock_idx in the tree has
+ * already been verified.
  */
-static bool is_hash_block_verified(struct fsverity_info *vi, struct page *hpage,
+static bool is_hash_block_verified(struct fsverity_info *vi,
+				   struct fsverity_blockbuf *block,
 				   unsigned long hblock_idx)
 {
-	unsigned int blocks_per_page;
-	unsigned int i;
-
-	/*
-	 * When the Merkle tree block size and page size are the same, then the
-	 * ->hash_block_verified bitmap isn't allocated, and we use PG_checked
-	 * to directly indicate whether the page's block has been verified.
-	 *
-	 * Using PG_checked also guarantees that we re-verify hash pages that
-	 * get evicted and re-instantiated from the backing storage, as new
-	 * pages always start out with PG_checked cleared.
-	 */
+	/* Merkle tree block size == PAGE_SIZE */
 	if (!vi->hash_block_verified)
-		return PageChecked(hpage);
+		return block->verified;
 
-	/*
-	 * When the Merkle tree block size and page size differ, we use a bitmap
-	 * to indicate whether each hash block has been verified.
-	 *
-	 * However, we still need to ensure that hash pages that get evicted and
-	 * re-instantiated from the backing storage are re-verified.  To do
-	 * this, we use PG_checked again, but now it doesn't really mean
-	 * "checked".  Instead, now it just serves as an indicator for whether
-	 * the hash page is newly instantiated or not.  If the page is new, as
-	 * indicated by PG_checked=0, we clear the bitmap bits for the page's
-	 * blocks since they are untrustworthy, then set PG_checked=1.
-	 * Otherwise we return the bitmap bit for the requested block.
-	 *
-	 * Multiple threads may execute this code concurrently on the same page.
-	 * This is safe because we use memory barriers to ensure that if a
-	 * thread sees PG_checked=1, then it also sees the associated bitmap
-	 * clearing to have occurred.  Also, all writes and their corresponding
-	 * reads are atomic, and all writes are safe to repeat in the event that
-	 * multiple threads get into the PG_checked=0 section.  (Clearing a
-	 * bitmap bit again at worst causes a hash block to be verified
-	 * redundantly.  That event should be very rare, so it's not worth using
-	 * a lock to avoid.  Setting PG_checked again has no effect.)
-	 */
-	if (PageChecked(hpage)) {
-		/*
-		 * A read memory barrier is needed here to give ACQUIRE
-		 * semantics to the above PageChecked() test.
-		 */
-		smp_rmb();
-		return test_bit(hblock_idx, vi->hash_block_verified);
-	}
-	blocks_per_page = vi->tree_params.blocks_per_page;
-	hblock_idx = round_down(hblock_idx, blocks_per_page);
-	for (i = 0; i < blocks_per_page; i++)
-		clear_bit(hblock_idx + i, vi->hash_block_verified);
-	/*
-	 * A write memory barrier is needed here to give RELEASE semantics to
-	 * the below SetPageChecked() operation.
-	 */
-	smp_wmb();
-	SetPageChecked(hpage);
-	return false;
+	return test_bit(hblock_idx, vi->hash_block_verified);
 }
 
 /*
@@ -95,15 +44,15 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 	const struct merkle_tree_params *params = &vi->tree_params;
 	const unsigned int hsize = params->digest_size;
 	int level;
+	int err;
+	int num_ra_pages;
 	u8 _want_hash[FS_VERITY_MAX_DIGEST_SIZE];
 	const u8 *want_hash;
 	u8 real_hash[FS_VERITY_MAX_DIGEST_SIZE];
 	/* The hash blocks that are traversed, indexed by level */
 	struct {
-		/* Page containing the hash block */
-		struct page *page;
-		/* Mapped address of the hash block (will be within @page) */
-		const void *addr;
+		/* Buffer containing the hash block */
+		struct fsverity_blockbuf block;
 		/* Index of the hash block in the tree overall */
 		unsigned long index;
 		/* Byte offset of the wanted hash relative to @addr */
@@ -144,10 +93,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		unsigned long next_hidx;
 		unsigned long hblock_idx;
 		pgoff_t hpage_idx;
-		unsigned int hblock_offset_in_page;
 		unsigned int hoffset;
-		struct page *hpage;
-		const void *haddr;
+		struct fsverity_blockbuf *block = &hblocks[level].block;
 
 		/*
 		 * The index of the block in the current level; also the index
@@ -161,33 +108,27 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		/* Index of the hash page in the tree overall */
 		hpage_idx = hblock_idx >> params->log_blocks_per_page;
 
-		/* Byte offset of the hash block within the page */
-		hblock_offset_in_page =
-			(hblock_idx << params->log_blocksize) & ~PAGE_MASK;
-
 		/* Byte offset of the hash within the block */
 		hoffset = (hidx << params->log_digestsize) &
 			  (params->block_size - 1);
 
-		hpage = inode->i_sb->s_vop->read_merkle_tree_page(inode,
-				hpage_idx, level == 0 ? min(max_ra_pages,
-					params->tree_pages - hpage_idx) : 0);
-		if (IS_ERR(hpage)) {
+		num_ra_pages = level == 0 ?
+			min(max_ra_pages, params->tree_pages - hpage_idx) : 0;
+		err = fsverity_read_merkle_tree_block(
+			inode, hblock_idx << params->log_blocksize, block,
+			params->log_blocksize, num_ra_pages);
+		if (err) {
 			fsverity_err(inode,
-				     "Error %ld reading Merkle tree page %lu",
-				     PTR_ERR(hpage), hpage_idx);
+				     "Error %d reading Merkle tree block %lu",
+				     err, hblock_idx);
 			goto error;
 		}
-		haddr = kmap_local_page(hpage) + hblock_offset_in_page;
-		if (is_hash_block_verified(vi, hpage, hblock_idx)) {
-			memcpy(_want_hash, haddr + hoffset, hsize);
+		if (is_hash_block_verified(vi, block, hblock_idx)) {
+			memcpy(_want_hash, block->kaddr + hoffset, hsize);
 			want_hash = _want_hash;
-			kunmap_local(haddr);
-			put_page(hpage);
+			fsverity_drop_block(inode, block);
 			goto descend;
 		}
-		hblocks[level].page = hpage;
-		hblocks[level].addr = haddr;
 		hblocks[level].index = hblock_idx;
 		hblocks[level].hoffset = hoffset;
 		hidx = next_hidx;
@@ -197,8 +138,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 descend:
 	/* Descend the tree verifying hash blocks. */
 	for (; level > 0; level--) {
-		struct page *hpage = hblocks[level - 1].page;
-		const void *haddr = hblocks[level - 1].addr;
+		struct fsverity_blockbuf *block = &hblocks[level - 1].block;
+		const void *haddr = block->kaddr;
 		unsigned long hblock_idx = hblocks[level - 1].index;
 		unsigned int hoffset = hblocks[level - 1].hoffset;
 
@@ -213,12 +154,10 @@ descend:
 		 */
 		if (vi->hash_block_verified)
 			set_bit(hblock_idx, vi->hash_block_verified);
-		else
-			SetPageChecked(hpage);
+		block->verified = true;
 		memcpy(_want_hash, haddr + hoffset, hsize);
 		want_hash = _want_hash;
-		kunmap_local(haddr);
-		put_page(hpage);
+		fsverity_drop_block(inode, block);
 	}
 
 	/* Finally, verify the data block. */
@@ -236,8 +175,7 @@ corrupted:
 		     params->hash_alg->name, hsize, real_hash);
 error:
 	for (; level > 0; level--) {
-		kunmap_local(hblocks[level - 1].addr);
-		put_page(hblocks[level - 1].page);
+		fsverity_drop_block(inode, &hblocks[level - 1].block);
 	}
 	return false;
 }
@@ -361,4 +299,166 @@ void __init fsverity_init_workqueue(void)
 						  num_online_cpus());
 	if (!fsverity_read_workqueue)
 		panic("failed to allocate fsverity_read_queue");
+}
+
+/**
+ * fsverity_invalidate_range() - invalidate range of Merkle tree blocks
+ * @inode: inode to which this Merkle tree blocks belong
+ * @offset: offset into the Merkle tree
+ * @size: number of bytes to invalidate starting from @offset
+ *
+ * This function invalidates/clears "verified" state of all Merkle tree blocks
+ * in the Merkle tree within the range starting from 'offset' to 'offset + size'.
+ *
+ * Note! As this function clears fs-verity bitmap and can be run from multiple
+ * threads simultaneously, filesystem has to take care of operation ordering
+ * while invalidating Merkle tree and caching it. See fsverity_invalidate_page()
+ * as reference.
+ */
+void fsverity_invalidate_range(struct inode *inode, loff_t offset,
+		size_t size)
+{
+	struct fsverity_info *vi = inode->i_verity_info;
+	const unsigned int log_blocksize = vi->tree_params.log_blocksize;
+	unsigned int i;
+	pgoff_t index = offset >> log_blocksize;
+	unsigned int blocks = size >> log_blocksize;
+
+	if (offset + size > vi->tree_params.tree_size) {
+		fsverity_err(inode,
+"Trying to invalidate beyond Merkle tree (tree %lld, offset %lld, size %ld)",
+			     vi->tree_params.tree_size, offset, size);
+		return;
+	}
+
+	for (i = 0; i < blocks; i++)
+		clear_bit(index + i, vi->hash_block_verified);
+}
+EXPORT_SYMBOL_GPL(fsverity_invalidate_range);
+
+/* fsverity_invalidate_page() - invalidate Merkle tree blocks in the page
+ * @inode: inode to which this Merkle tree blocks belong
+ * @page: page which contains blocks which need to be invalidated
+ * @index: index of the first Merkle tree block in the page
+ *
+ * This function invalidates "verified" state of all Merkle tree blocks within
+ * the 'page'.
+ *
+ * When the Merkle tree block size and page size are the same, then the
+ * ->hash_block_verified bitmap isn't allocated, and we use PG_checked
+ * to directly indicate whether the page's block has been verified. This
+ * function does nothing in this case as page is invalidated by evicting from
+ * the memory.
+ *
+ * Using PG_checked also guarantees that we re-verify hash pages that
+ * get evicted and re-instantiated from the backing storage, as new
+ * pages always start out with PG_checked cleared.
+ */
+void fsverity_invalidate_page(struct inode *inode, struct page *page,
+		pgoff_t index)
+{
+	unsigned int blocks_per_page;
+	struct fsverity_info *vi = inode->i_verity_info;
+	const unsigned int log_blocksize = vi->tree_params.log_blocksize;
+
+	/*
+	 * If bitmap is not allocated, that means that fs-verity uses PG_checked
+	 * to track verification status of the blocks.
+	 */
+	if (!vi->hash_block_verified)
+		return;
+
+	/*
+	 * When the Merkle tree block size and page size differ, we use a bitmap
+	 * to indicate whether each hash block has been verified.
+	 *
+	 * However, we still need to ensure that hash pages that get evicted and
+	 * re-instantiated from the backing storage are re-verified.  To do
+	 * this, we use PG_checked again, but now it doesn't really mean
+	 * "checked".  Instead, now it just serves as an indicator for whether
+	 * the hash page is newly instantiated or not.  If the page is new, as
+	 * indicated by PG_checked=0, we clear the bitmap bits for the page's
+	 * blocks since they are untrustworthy, then set PG_checked=1.
+	 *
+	 * Multiple threads may execute this code concurrently on the same page.
+	 * This is safe because we use memory barriers to ensure that if a
+	 * thread sees PG_checked=1, then it also sees the associated bitmap
+	 * clearing to have occurred.  Also, all writes and their corresponding
+	 * reads are atomic, and all writes are safe to repeat in the event that
+	 * multiple threads get into the PG_checked=0 section.  (Clearing a
+	 * bitmap bit again at worst causes a hash block to be verified
+	 * redundantly.  That event should be very rare, so it's not worth using
+	 * a lock to avoid.  Setting PG_checked again has no effect.)
+	 */
+	if (PageChecked(page)) {
+		/*
+		 * A read memory barrier is needed here to give ACQUIRE
+		 * semantics to the above PageChecked() test.
+		 */
+		smp_rmb();
+		return;
+	}
+
+	blocks_per_page = vi->tree_params.blocks_per_page;
+	index = round_down(index, blocks_per_page);
+	fsverity_invalidate_range(inode, index << log_blocksize, PAGE_SIZE);
+	/*
+	 * A write memory barrier is needed here to give RELEASE
+	 * semantics to the below SetPageChecked() operation.
+	 */
+	smp_wmb();
+	SetPageChecked(page);
+}
+
+void fsverity_drop_block(struct inode *inode,
+		struct fsverity_blockbuf *block)
+{
+	if (inode->i_sb->s_vop->drop_block)
+		inode->i_sb->s_vop->drop_block(block);
+	else {
+		struct page *page = (struct page *)block->context;
+
+		/* Merkle tree block size == PAGE_SIZE; */
+		if (block->verified)
+			SetPageChecked(page);
+
+		kunmap_local(block->kaddr);
+		put_page(page);
+	}
+}
+
+int fsverity_read_merkle_tree_block(struct inode *inode,
+					u64 pos,
+					struct fsverity_blockbuf *block,
+					unsigned int log_blocksize,
+					unsigned long num_ra_pages)
+{
+	struct page *page;
+	int err = 0;
+	unsigned long index = pos >> PAGE_SHIFT;
+
+	if (inode->i_sb->s_vop->read_merkle_tree_block)
+		return inode->i_sb->s_vop->read_merkle_tree_block(
+			inode, pos, block, log_blocksize, num_ra_pages);
+
+	page = inode->i_sb->s_vop->read_merkle_tree_page(
+			inode, index, num_ra_pages);
+	if (IS_ERR(page)) {
+		err = PTR_ERR(page);
+		fsverity_err(inode,
+			     "Error %d reading Merkle tree page %lu",
+			     err, index);
+		return PTR_ERR(page);
+	}
+
+	fsverity_invalidate_page(inode, page, index);
+	/*
+	 * For the block size == PAGE_SIZE case set ->verified. The PG_checked
+	 * indicates wether block in the page is verified.
+	 */
+	block->verified = PageChecked(page);
+	block->kaddr = kmap_local_page(page) + (pos & (PAGE_SIZE - 1));
+	block->context = page;
+
+	return 0;
 }
