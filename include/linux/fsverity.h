@@ -26,6 +26,36 @@
 /* Arbitrary limit to bound the kmalloc() size.  Can be changed. */
 #define FS_VERITY_MAX_DESCRIPTOR_SIZE	16384
 
+/**
+ * struct fsverity_blockbuf - Merkle Tree block
+ * @kaddr: virtual address of the block's data
+ * @size: buffer size
+ * @verified: true if block is verified against Merkle tree
+ * @context: filesystem private context
+ *
+ * Buffer containing single Merkle Tree block. These buffers are passed
+ *  - to filesystem, when fs-verity is building/writing merkel tree,
+ *  - from filesystem, when fs-verity is reading merkle tree from a disk.
+ * Filesystems sets kaddr together with size to point to a memory which contains
+ * Merkle tree block. Same is done by fs-verity when Merkle tree is need to be
+ * written down to disk.
+ *
+ * While reading the tree, fs-verity calls ->read_merkle_tree_block followed by
+ * ->drop_block to let filesystem know that memory can be freed.
+ *
+ * For Merkle tree block == PAGE_SIZE, fs-verity sets verified flag to true if
+ * block in the buffer was verified.
+ *
+ * The context is optional. This field can be used by filesystem to passthrough
+ * state from ->read_merkle_tree_block to ->drop_block.
+ */
+struct fsverity_blockbuf {
+	void *kaddr;
+	unsigned int size;
+	bool verified;
+	void *context;
+};
+
 /* Verity operations for filesystems */
 struct fsverity_operations {
 
@@ -108,6 +138,32 @@ struct fsverity_operations {
 					      unsigned long num_ra_pages);
 
 	/**
+	 * Read a Merkle tree block of the given inode.
+	 * @inode: the inode
+	 * @pos: byte offset of the block within the Merkle tree
+	 * @block: block buffer for filesystem to point it to the block
+	 * @log_blocksize: size of the expected block
+	 * @num_ra_pages: The number of pages with blocks that should be
+	 *		  prefetched starting at @index if the page at @index
+	 *		  isn't already cached.  Implementations may ignore this
+	 *		  argument; it's only a performance optimization.
+	 *
+	 * This can be called at any time on an open verity file.  It may be
+	 * called by multiple processes concurrently.
+	 *
+	 * As filesystem does caching of the blocks, this functions needs to tell
+	 * fsverity which blocks are not valid anymore (were evicted from memory)
+	 * by calling fsverity_invalidate_range().
+	 *
+	 * Return: 0 on success, -errno on failure
+	 */
+	int (*read_merkle_tree_block)(struct inode *inode,
+				      u64 pos,
+				      struct fsverity_blockbuf *block,
+				      unsigned int log_blocksize,
+				      unsigned long num_ra_pages);
+
+	/**
 	 * Write a Merkle tree block to the given inode.
 	 *
 	 * @inode: the inode for which the Merkle tree is being built
@@ -122,6 +178,16 @@ struct fsverity_operations {
 	 */
 	int (*write_merkle_tree_block)(struct inode *inode, const void *buf,
 				       u64 pos, unsigned int size);
+
+	/**
+	 * Release the reference to a Merkle tree block
+	 *
+	 * @page: the block to release
+	 *
+	 * This is called when fs-verity is done with a block obtained with
+	 * ->read_merkle_tree_block().
+	 */
+	void (*drop_block)(struct fsverity_blockbuf *block);
 };
 
 #ifdef CONFIG_FS_VERITY
@@ -175,6 +241,9 @@ int fsverity_ioctl_read_metadata(struct file *filp, const void __user *uarg);
 bool fsverity_verify_blocks(struct folio *folio, size_t len, size_t offset);
 void fsverity_verify_bio(struct bio *bio);
 void fsverity_enqueue_verify_work(struct work_struct *work);
+void fsverity_invalidate_range(struct inode *inode, loff_t offset, size_t size);
+void fsverity_invalidate_page(struct inode *inode, struct page *page,
+		pgoff_t index);
 
 #else /* !CONFIG_FS_VERITY */
 
