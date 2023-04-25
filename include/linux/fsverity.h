@@ -122,14 +122,14 @@ struct fsverity_operations {
 				       u64 pos, unsigned int size);
 
 	/**
-	 * Release the reference to a Merkle tree page
+	 * Release the reference to a Merkle tree block
 	 *
-	 * @page: the page to release
+	 * @page: the block to release
 	 *
-	 * This is called when fs-verity is done with a page obtained with
-	 * ->read_merkle_tree_page().
+	 * This is called when fs-verity is done with a block obtained with
+	 * ->read_merkle_tree_block().
 	 */
-	void (*drop_page)(struct page *page);
+	void (*drop_block)(struct fsverity_block *block);
 };
 
 #ifdef CONFIG_FS_VERITY
@@ -337,20 +337,19 @@ static inline int fsverity_prepare_setattr(struct dentry *dentry,
 }
 
 /**
- * fsverity_drop_page() - drop page obtained with ->read_merkle_tree_page()
+ * fsverity_drop_block() - drop block obtained with ->read_merkle_tree_block()
  * @inode: inode in use for verification or metadata reading
- * @page: page to be dropped
+ * @block: block to be dropped
  *
- * Generic put_page() method. Calls out back to filesystem if ->drop_page() is
- * set, otherwise just drops the reference to a page.
+ * Generic put_page() method. Calls out back to filesystem if ->drop_block() is
+ * set, otherwise do nothing.
  *
  */
-static inline void fsverity_drop_page(struct inode *inode, struct page *page)
+static inline void fsverity_drop_block(struct inode *inode,
+		struct fsverity_block *block)
 {
-	if (inode->i_sb->s_vop->drop_page)
-		inode->i_sb->s_vop->drop_page(page);
-	else
-		put_page(page);
+	if (inode->i_sb->s_vop->drop_block)
+		inode->i_sb->s_vop->drop_block(block);
 }
 
 #endif	/* _LINUX_FSVERITY_H */
