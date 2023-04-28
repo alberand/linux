@@ -126,14 +126,13 @@ static struct page *
 xfs_read_merkle_tree_page(
 	struct inode		*inode,
 	pgoff_t			index,
-	unsigned long		num_ra_pages,
-	u8			log_blocksize)
+	unsigned long		num_ra_pages)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct page		*page = NULL;
 	uint32_t		bs = 1 << log_blocksize;
 	int			blocks_per_page =
-		(1 << (PAGE_SHIFT - log_blocksize));
+		(1 << (PAGE_SHIFT - PAGE_SHIFT));
 	int			n = 0;
 	int			offset = 0;
 	int			error = 0;
@@ -205,6 +204,48 @@ xfs_read_merkle_tree_page(
 	return page;
 }
 
+int
+xfs_read_merkle_tree_block(
+	struct inode		*inode,
+	unsigned int		pos,
+	struct fsverity_block	*block)
+{
+	struct xfs_inode	*ip = XFS_I(inode);
+	__be64			name = cpu_to_be64(pos);
+	int			error = 0;
+	struct xfs_da_args	args = {
+		.dp		= ip,
+		.attr_filter	= XFS_ATTR_VERITY,
+		.name		= (const uint8_t *)&name,
+		.namelen	= sizeof(__be64),
+	};
+
+	error = xfs_attr_get(&args);
+	if (error)
+		goto out;
+
+	WARN_ON_ONCE(!args.valuelen);
+
+	/* now we also want to get underlying xfs_buf */
+	args.op_flags = XFS_DA_OP_BUFFER;
+	error = xfs_attr_get(&args);
+	if (error)
+		goto out;
+
+	block->kaddr = xfs_buf_offset(args.bp, sizeof(struct xfs_attr3_rmt_hdr));
+	block->len = args.valuelen;
+	block->instantiated = args.bp->b_flags & XBF_VERITY_CHECKED;
+	block->context = args.bp;
+
+	return error;
+
+out:
+	kmem_free(args.value);
+	if (args.bp)
+		xfs_buf_rele(args.bp);
+	return error;
+}
+
 static int
 xfs_write_merkle_tree_block(
 	struct inode		*inode,
@@ -231,23 +272,19 @@ xfs_write_merkle_tree_block(
 }
 
 static void
-xfs_drop_page(
-	struct page			*page)
+xfs_drop_block(
+	struct fsverity_block			*block)
 {
-	int				i = 0;
-	struct xfs_verity_buf_list	*buf_list =
-		(struct xfs_verity_buf_list *)page->private;
+	struct xfs_buf *buf;
+	ASSERT(block != NULL);
 
-	ASSERT(buf_list != NULL);
+	buf = (struct xfs_buf *)block->context;
 
-	for (i = 0; i < buf_list->buf_count; i++) {
-		if (PageChecked(page))
-			buf_list->bufs[i]->b_flags |= XBF_VERITY_CHECKED;
-		xfs_buf_rele(buf_list->bufs[i]);
-	}
+	if (block->instantiated)
+		buf->b_flags |= XBF_VERITY_CHECKED;
+	xfs_buf_rele(buf);
 
-	kmem_free(buf_list);
-	put_page(page);
+	kunmap_local(block->kaddr);
 }
 
 const struct fsverity_operations xfs_verity_ops = {
@@ -255,6 +292,7 @@ const struct fsverity_operations xfs_verity_ops = {
 	.end_enable_verity		= &xfs_end_enable_verity,
 	.get_verity_descriptor		= &xfs_get_verity_descriptor,
 	.read_merkle_tree_page		= &xfs_read_merkle_tree_page,
+	.read_merkle_tree_block		= &xfs_read_merkle_tree_block,
 	.write_merkle_tree_block	= &xfs_write_merkle_tree_block,
-	.drop_page			= &xfs_drop_page,
+	.drop_block			= &xfs_drop_block,
 };

@@ -88,10 +88,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 	u8 real_hash[FS_VERITY_MAX_DIGEST_SIZE];
 	/* The hash blocks that are traversed, indexed by level */
 	struct {
-		/* Page containing the hash block */
-		struct page *page;
-		/* Mapped address of the hash block (will be within @page) */
-		const void *addr;
+		/* Block containing the hash block */
+		struct fsverity_block block;
 		/* Index of the hash block in the tree overall */
 		unsigned long index;
 		/* Byte offset of the wanted hash relative to @addr */
@@ -135,8 +133,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		pgoff_t hpage_idx;
 		unsigned int hblock_offset_in_page;
 		unsigned int hoffset;
-		struct page *hpage;
 		const void *haddr;
+		struct fsverity_block *block = &hblocks[level].block;
 
 		/*
 		 * The index of the block in the current level; also the index
@@ -158,26 +156,23 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		hoffset = (hidx << params->log_digestsize) &
 			  (params->block_size - 1);
 
-		hpage = inode->i_sb->s_vop->read_merkle_tree_page(inode,
-				hpage_idx, level == 0 ? min(max_ra_pages,
-					params->tree_pages - hpage_idx) : 0);
-		if (IS_ERR(hpage)) {
-			err = PTR_ERR(hpage);
+		block->len = params->block_size;
+		err = inode->i_sb->s_vop->read_merkle_tree_block(
+			inode, hblock_idx << params->log_blocksize, block);
+		if (err) {
 			fsverity_err(inode,
-				     "Error %d reading Merkle tree page %lu",
-				     err, hpage_idx);
+				     "Error %d reading Merkle tree block %lu",
+				     err, hblock_idx);
 			goto out;
 		}
-		haddr = kmap_local_page(hpage) + hblock_offset_in_page;
-		if (is_hash_block_verified(vi, hblock_idx, PageChecked(hpage))) {
+		haddr = block->kaddr + hblock_offset_in_page;
+		if (is_hash_block_verified(vi, hblock_idx, block->instantiated)) {
 			memcpy(_want_hash, haddr + hoffset, hsize);
 			want_hash = _want_hash;
 			kunmap_local(haddr);
-			fsverity_drop_page(inode, hpage);
+			fsverity_drop_block(inode, block);
 			goto descend;
 		}
-		hblocks[level].page = hpage;
-		hblocks[level].addr = haddr;
 		hblocks[level].index = hblock_idx;
 		hblocks[level].hoffset = hoffset;
 		hidx = next_hidx;
@@ -187,8 +182,8 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 descend:
 	/* Descend the tree verifying hash blocks. */
 	for (; level > 0; level--) {
-		struct page *hpage = hblocks[level - 1].page;
-		const void *haddr = hblocks[level - 1].addr;
+		struct fsverity_block *block = &hblocks[level - 1].block;
+		const void *haddr = block->kaddr;
 		unsigned long hblock_idx = hblocks[level - 1].index;
 		unsigned int hoffset = hblocks[level - 1].hoffset;
 
@@ -203,14 +198,10 @@ descend:
 		 * idempotent, as the same hash block might be verified by
 		 * multiple threads concurrently.
 		 */
-		if (vi->hash_block_verified)
-			set_bit(hblock_idx, vi->hash_block_verified);
-		else
-			SetPageChecked(hpage);
+		set_bit(hblock_idx, vi->hash_block_verified);
 		memcpy(_want_hash, haddr + hoffset, hsize);
 		want_hash = _want_hash;
-		kunmap_local(haddr);
-		fsverity_drop_page(inode, hpage);
+		fsverity_drop_block(inode, block);
 	}
 
 	/* Finally, verify the data block. */
@@ -220,8 +211,7 @@ descend:
 	err = cmp_hashes(vi, want_hash, real_hash, data_pos, -1);
 out:
 	for (; level > 0; level--) {
-		kunmap_local(hblocks[level - 1].addr);
-		fsverity_drop_page(inode, hblocks[level - 1].page);
+		fsverity_drop_block(inode, &hblocks[level - 1].block);
 	}
 	return err == 0;
 }
