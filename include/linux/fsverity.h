@@ -26,13 +26,6 @@
 /* Arbitrary limit to bound the kmalloc() size.  Can be changed. */
 #define FS_VERITY_MAX_DESCRIPTOR_SIZE	16384
 
-struct fsverity_block {
-	void *kaddr;
-	unsigned int len;
-	bool instantiated;
-	void *context;
-};
-
 /* Verity operations for filesystems */
 struct fsverity_operations {
 
@@ -111,19 +104,6 @@ struct fsverity_operations {
 	struct page *(*read_merkle_tree_page)(struct inode *inode,
 					      pgoff_t index,
 					      unsigned long num_ra_pages);
-	/**
-	 * Read a Merkle tree block of the given inode.
-	 * @inode: the inode
-	 * @index: 0-based index of the block within the Merkle tree
-	 *
-	 * This can be called at any time on an open verity file.  It may be
-	 * called by multiple processes concurrently.
-	 *
-	 * Return: 0 on success, -errno on failure
-	 */
-	int (*read_merkle_tree_block)(struct inode *inode,
-				      unsigned int index,
-				      struct fsverity_block *block);
 
 	/**
 	 * Write a Merkle tree block to the given inode.
@@ -371,33 +351,5 @@ static inline void fsverity_drop_block(struct inode *inode,
 	if (inode->i_sb->s_vop->drop_block)
 		inode->i_sb->s_vop->drop_block(block);
 }
-
-/**
- * fsverity_read_block_from_page() - temporary layer between fs using read page
- * and read block
- * @inode: inode in use for verification or metadata reading
- * @block: block to be dropped
- *
- * Generic put_page() method. Calls out back to filesystem if ->drop_block() is
- * set, otherwise do nothing.
- *
- */
-static inline void fsverity_read_block_from_page(struct inode *inode,
-						 unsigned int index,
-						 struct fsverity_block *block)
-{
-
-	if (inode->i_sb->s_vop->read_merkle_tree_block)
-		inode->i_sb->s_vop->read_merkle_tree_block(inode, index, block);
-	else {
-		index = index >> PAGE_SHIFT;
-		struct page *page = inode->i_sb->s_vop->read_merkle_tree_page(
-				inode, index, 0);
-
-		block->kaddr = page_address(page) + (index % PAGE_SIZE);
-		block->instantiated = PageChecked(page);
-	}
-}
-
 
 #endif	/* _LINUX_FSVERITY_H */
