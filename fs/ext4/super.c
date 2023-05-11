@@ -5329,9 +5329,7 @@ static int __ext4_fill_super(struct fs_context *fc, struct super_block *sb)
 #ifdef CONFIG_FS_ENCRYPTION
 	sb->s_cop = &ext4_cryptops;
 #endif
-#ifdef CONFIG_FS_VERITY
-	sb->s_vop = &ext4_verityops;
-#endif
+	fsverity_set_ops(sb, &ext4_verityops);
 #ifdef CONFIG_QUOTA
 	sb->dq_op = &ext4_quota_operations;
 	if (ext4_has_feature_quota(sb))
