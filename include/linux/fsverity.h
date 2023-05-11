@@ -145,6 +145,12 @@ static inline struct fsverity_info *fsverity_get_info(const struct inode *inode)
 	return smp_load_acquire(&inode->i_verity_info);
 }
 
+static inline void fsverity_set_ops(struct super_block *sb,
+		const struct fsverity_operations *ops)
+{
+	sb->s_vop = ops;
+}
+
 /* enable.c */
 
 int fsverity_ioctl_enable(struct file *filp, const void __user *arg);
@@ -189,6 +195,11 @@ void fsverity_enqueue_verify_work(struct work_struct *work);
 static inline struct fsverity_info *fsverity_get_info(const struct inode *inode)
 {
 	return NULL;
+}
+
+static inline void fsverity_set_ops(struct super_block *sb,
+		const struct fsverity_operations *ops)
+{
 }
 
 /* enable.c */
