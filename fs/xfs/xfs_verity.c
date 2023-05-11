@@ -64,6 +64,36 @@ xfs_begin_enable_verity(
 }
 
 static int
+xfs_drop_merkle_tree(
+	struct xfs_inode	*ip,
+	u64			merkle_tree_size)
+{
+	struct xfs_fsverity_merkle_key	name;
+	int			error = 0, offset = 0, index = 0;
+	struct xfs_da_args	args = {
+		.dp		= ip,
+		.whichfork	= XFS_ATTR_FORK,
+		.attr_filter	= XFS_ATTR_VERITY,
+		.name		= (const uint8_t *)&name,
+		.namelen	= sizeof(struct xfs_fsverity_merkle_key),
+		/* NULL value make xfs_attr_set remove the attr */
+		.value		= NULL,
+	};
+
+	for (index = 0; offset < merkle_tree_size; index++) {
+		offset = index << PAGE_SHIFT;
+		xfs_fsverity_merkle_key_to_disk(&name, offset);
+
+		error = xfs_attr_set(&args);
+		/* ignore those which weren't create yet */
+		if (error && error != -ENOATTR)
+			return error;
+	}
+
+	return error;
+}
+
+static int
 xfs_end_enable_verity(
 	struct file		*filp,
 	const void		*desc,
@@ -118,6 +148,7 @@ xfs_end_enable_verity(
 		inode->i_flags |= S_VERITY;
 
 out:
+	xfs_drop_merkle_tree(ip, merkle_tree_size);
 	xfs_iflags_clear(ip, XFS_IVERITY_CONSTRUCTION);
 	return error;
 }
