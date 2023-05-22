@@ -297,18 +297,23 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		gfp_t orig_gfp = gfp;
 		unsigned int nr_vecs = DIV_ROUND_UP(length, PAGE_SIZE);
 
-		if (ctx->bio)
+		if (ctx->ops && ctx->ops->submit_io)
+			ctx->ops->submit_io(iter, ctx->bio, pos);
+		else
 			submit_bio(ctx->bio);
 
 		if (ctx->rac) /* same as readahead_gfp_mask */
 			gfp |= __GFP_NORETRY | __GFP_NOWARN;
-#ifdef CONFIG_FS_VERITY
-		ctx->bio = bio_alloc_bioset(iomap->bdev, bio_max_segs(nr_vecs),
-				REQ_OP_READ, GFP_NOFS, &iomap_read_ioend_bioset);
-#else
-		ctx->bio = bio_alloc(iomap->bdev, bio_max_segs(nr_vecs),
+
+		if (ctx->ops && ctx->ops->bio_set)
+			ctx->bio = bio_alloc_bioset(iomap->bdev,
+						    bio_max_segs(nr_vecs),
+						    REQ_OP_READ, GFP_NOFS,
+						    ctx->ops->bio_set);
+		else
+			ctx->bio = bio_alloc(iomap->bdev, bio_max_segs(nr_vecs),
 				REQ_OP_READ, gfp);
-#endif
+
 		/*
 		 * If the bio_alloc fails, try it again for a single page to
 		 * avoid having to deal with partial page reads.  This emulates

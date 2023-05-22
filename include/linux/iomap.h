@@ -280,6 +280,18 @@ struct iomap_readpage_ops {
 	 * additional verification after bio is processed
 	 */
 	void (*prepare_ioend)(struct iomap_read_ioend *ioend);
+
+	/*
+	 * Filesystems wishing to attach private information to a direct io bio
+	 * must provide a ->submit_io method that attaches the additional
+	 * information to the bio and changes the ->bi_end_io callback to a
+	 * custom function.  This function should, at a minimum, perform any
+	 * relevant post-processing of the bio and end with a call to
+	 * iomap_read_end_io.
+	 */
+	void (*submit_io)(const struct iomap_iter *iter, struct bio *bio,
+		          loff_t file_offset);
+	struct bio_set *bio_set;
 };
 
 struct iomap_readpage_ctx {
