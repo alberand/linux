@@ -26,6 +26,8 @@ struct xfs_writepage_ctx {
 	unsigned int		cow_seq;
 };
 
+static struct bio_set xfs_read_ioend_bioset;
+
 static inline struct xfs_writepage_ctx *
 XFS_WPC(struct iomap_writepage_ctx *ctx)
 {
@@ -598,9 +600,28 @@ xfs_verify_folio(
 	return -EFSCORRUPTED;
 }
 
+int
+xfs_init_iomap_bioset(
+	struct xfs_mount	*mp)
+{
+	return bioset_init(&xfs_read_ioend_bioset,
+			   4 * (PAGE_SIZE / SECTOR_SIZE),
+			   offsetof(struct iomap_read_ioend, read_inline_bio),
+			   BIOSET_NEED_BVECS);
+}
+
+int
+xfs_free_iomap_bioset(
+	struct xfs_mount	*mp)
+{
+	/* TODO */
+	return 0;
+}
+
 static const struct iomap_readpage_ops xfs_readpage_ops = {
 	.verify_folio		= &xfs_verify_folio,
 	.prepare_ioend		= &xfs_prepare_read_ioend,
+	.bio_set		= &xfs_read_ioend_bioset,
 };
 
 STATIC int
