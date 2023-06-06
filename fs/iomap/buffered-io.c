@@ -42,9 +42,6 @@ static inline struct iomap_page *to_iomap_page(struct folio *folio)
 }
 
 static struct bio_set iomap_ioend_bioset;
-#ifdef CONFIG_FS_VERITY
-static struct bio_set iomap_read_ioend_bioset;
-#endif
 
 static struct iomap_page *
 iomap_page_create(struct inode *inode, struct folio *folio, unsigned int flags)
@@ -1844,17 +1841,6 @@ EXPORT_SYMBOL_GPL(iomap_writepages);
 
 static int __init iomap_init(void)
 {
-	int error = 0;
-
-#ifdef CONFIG_FS_VERITY
-	error = bioset_init(&iomap_read_ioend_bioset,
-			   4 * (PAGE_SIZE / SECTOR_SIZE),
-			   offsetof(struct iomap_read_ioend, read_inline_bio),
-			   BIOSET_NEED_BVECS);
-	if (error)
-		return error;
-#endif
-
 	return bioset_init(&iomap_ioend_bioset, 4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_ioend, io_inline_bio),
 			   BIOSET_NEED_BVECS);
