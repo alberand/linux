@@ -275,13 +275,6 @@ struct iomap_readpage_ops {
 	int (*verify_folio)(struct folio *folio, loff_t pos, unsigned int len);
 
 	/*
-	 * Optional, allows the file systems to perform actions just before
-	 * submitting the bio and/or override the bio bi_end_io handler for
-	 * additional verification after bio is processed
-	 */
-	void (*prepare_ioend)(struct iomap_read_ioend *ioend);
-
-	/*
 	 * Filesystems wishing to attach private information to a direct io bio
 	 * must provide a ->submit_io method that attaches the additional
 	 * information to the bio and changes the ->bi_end_io callback to a
