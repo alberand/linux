@@ -1142,7 +1142,7 @@ xfs_fs_put_super(
 	xfs_mount_list_del(mp);
 	xfs_inodegc_free_percpu(mp);
 	xfs_destroy_percpu_counters(mp);
-	xfs_free_iomap_bioset(mp);
+	xfs_free_iomap_bioset();
 	xfs_destroy_mount_workqueues(mp);
 	xfs_close_devices(mp);
 
@@ -1523,7 +1523,7 @@ xfs_fs_fill_super(
 	if (error)
 		goto out_destroy_counters;
 
-	error = xfs_init_iomap_bioset(mp);
+	error = xfs_init_iomap_bioset();
 	if (error)
 		goto out_destroy_inodegc_percpu;
 
@@ -1721,7 +1721,7 @@ xfs_fs_fill_super(
 	free_percpu(mp->m_stats.xs_stats);
  out_destroy_inodegc:
 	xfs_mount_list_del(mp);
-	xfs_free_iomap_bioset(mp);
+	xfs_free_iomap_bioset();
  out_destroy_inodegc_percpu:
 	xfs_inodegc_free_percpu(mp);
  out_destroy_counters:

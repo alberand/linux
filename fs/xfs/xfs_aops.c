@@ -558,7 +558,9 @@ xfs_read_work_end_io(
 		container_of(work, struct iomap_read_ioend, work);
 	struct bio *bio = &ioend->read_inline_bio;
 
+	printk("%s: bio error before: %d", __func__, bio->bi_status);
 	fsverity_verify_bio(bio);
+	printk("%s: bio error: %d", __func__, bio->bi_status);
 	iomap_read_end_io(bio);
 	/*
 	 * The iomap_read_ioend has been freed by bio_put() in
@@ -578,17 +580,6 @@ xfs_read_end_io(
 					&ioend->work));
 }
 
-static void
-xfs_prepare_read_ioend(
-	struct iomap_read_ioend	*ioend)
-{
-	if (!fsverity_active(ioend->io_inode))
-		return;
-
-	INIT_WORK(&ioend->work, &xfs_read_work_end_io);
-	ioend->read_inline_bio.bi_end_io = &xfs_read_end_io;
-}
-
 static int
 xfs_verify_folio(
 	struct folio	*folio,
@@ -601,26 +592,51 @@ xfs_verify_folio(
 }
 
 int
-xfs_init_iomap_bioset(
-	struct xfs_mount	*mp)
+xfs_init_iomap_bioset()
 {
+	printk("[ANDREY] bio set created");
+	if (xfs_read_ioend_bioset.bio_slab) {
+		printk("[ANDREY] bio already created");
+		return 0;
+	}
+
 	return bioset_init(&xfs_read_ioend_bioset,
 			   4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_read_ioend, read_inline_bio),
 			   BIOSET_NEED_BVECS);
 }
 
-int
-xfs_free_iomap_bioset(
-	struct xfs_mount	*mp)
+void
+xfs_free_iomap_bioset()
 {
-	/* TODO */
-	return 0;
+	/*bioset_exit(&xfs_read_ioend_bioset);*/
+}
+
+static void
+xfs_submit_read_bio(
+	const struct iomap_iter *iter,
+	struct bio *bio,
+	loff_t file_offset)
+{
+	struct iomap_read_ioend *ioend;
+
+	printk("before check");
+	ioend = container_of(bio, struct iomap_read_ioend, read_inline_bio);
+	if (!fsverity_active(ioend->io_inode))
+		submit_bio(bio);
+
+	ioend->io_inode = iter->inode;
+
+	INIT_WORK(&ioend->work, &xfs_read_work_end_io);
+	ioend->read_inline_bio.bi_end_io = &xfs_read_end_io;
+
+	printk("submiting bio");
+	submit_bio(bio);
 }
 
 static const struct iomap_readpage_ops xfs_readpage_ops = {
 	.verify_folio		= &xfs_verify_folio,
-	.prepare_ioend		= &xfs_prepare_read_ioend,
+	.submit_io		= &xfs_submit_read_bio,
 	.bio_set		= &xfs_read_ioend_bioset,
 };
 
