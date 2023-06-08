@@ -558,9 +558,7 @@ xfs_read_work_end_io(
 		container_of(work, struct iomap_read_ioend, work);
 	struct bio *bio = &ioend->read_inline_bio;
 
-	printk("%s: bio error before: %d", __func__, bio->bi_status);
 	fsverity_verify_bio(bio);
-	printk("%s: bio error: %d", __func__, bio->bi_status);
 	iomap_read_end_io(bio);
 	/*
 	 * The iomap_read_ioend has been freed by bio_put() in
@@ -594,9 +592,7 @@ xfs_verify_folio(
 int
 xfs_init_iomap_bioset()
 {
-	printk("[ANDREY] bio set created");
 	if (xfs_read_ioend_bioset.bio_slab) {
-		printk("[ANDREY] bio already created");
 		return 0;
 	}
 
@@ -620,17 +616,13 @@ xfs_submit_read_bio(
 {
 	struct iomap_read_ioend *ioend;
 
-	printk("before check");
 	ioend = container_of(bio, struct iomap_read_ioend, read_inline_bio);
-	if (!fsverity_active(ioend->io_inode))
-		submit_bio(bio);
-
 	ioend->io_inode = iter->inode;
+	if (fsverity_active(ioend->io_inode)) {
+		INIT_WORK(&ioend->work, &xfs_read_work_end_io);
+		ioend->read_inline_bio.bi_end_io = &xfs_read_end_io;
+	}
 
-	INIT_WORK(&ioend->work, &xfs_read_work_end_io);
-	ioend->read_inline_bio.bi_end_io = &xfs_read_end_io;
-
-	printk("submiting bio");
 	submit_bio(bio);
 }
 
