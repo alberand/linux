@@ -1142,7 +1142,6 @@ xfs_fs_put_super(
 	xfs_mount_list_del(mp);
 	xfs_inodegc_free_percpu(mp);
 	xfs_destroy_percpu_counters(mp);
-	xfs_free_iomap_bioset();
 	xfs_destroy_mount_workqueues(mp);
 	xfs_close_devices(mp);
 
@@ -1523,10 +1522,6 @@ xfs_fs_fill_super(
 	if (error)
 		goto out_destroy_counters;
 
-	error = xfs_init_iomap_bioset();
-	if (error)
-		goto out_destroy_inodegc_percpu;
-
 	/*
 	 * All percpu data structures requiring cleanup when a cpu goes offline
 	 * must be allocated before adding this @mp to the cpu-dead handler's
@@ -1721,8 +1716,6 @@ xfs_fs_fill_super(
 	free_percpu(mp->m_stats.xs_stats);
  out_destroy_inodegc:
 	xfs_mount_list_del(mp);
-	xfs_free_iomap_bioset();
- out_destroy_inodegc_percpu:
 	xfs_inodegc_free_percpu(mp);
  out_destroy_counters:
 	xfs_destroy_percpu_counters(mp);
@@ -2374,11 +2367,17 @@ init_xfs_fs(void)
 	if (error)
 		goto out_remove_dbg_kobj;
 
-	error = register_filesystem(&xfs_fs_type);
+	error = xfs_init_iomap_bioset();
 	if (error)
 		goto out_qm_exit;
+
+	error = register_filesystem(&xfs_fs_type);
+	if (error)
+		goto out_iomap_bioset;
 	return 0;
 
+ out_iomap_bioset:
+	xfs_free_iomap_bioset();
  out_qm_exit:
 	xfs_qm_exit();
  out_remove_dbg_kobj:
@@ -2410,6 +2409,7 @@ init_xfs_fs(void)
 STATIC void __exit
 exit_xfs_fs(void)
 {
+	xfs_free_iomap_bioset();
 	xfs_qm_exit();
 	unregister_filesystem(&xfs_fs_type);
 #ifdef DEBUG

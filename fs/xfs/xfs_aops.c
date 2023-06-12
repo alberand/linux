@@ -590,12 +590,8 @@ xfs_verify_folio(
 }
 
 int
-xfs_init_iomap_bioset()
+xfs_init_iomap_bioset(void)
 {
-	if (xfs_read_ioend_bioset.bio_slab) {
-		return 0;
-	}
-
 	return bioset_init(&xfs_read_ioend_bioset,
 			   4 * (PAGE_SIZE / SECTOR_SIZE),
 			   offsetof(struct iomap_read_ioend, read_inline_bio),
@@ -603,9 +599,9 @@ xfs_init_iomap_bioset()
 }
 
 void
-xfs_free_iomap_bioset()
+xfs_free_iomap_bioset(void)
 {
-	/*bioset_exit(&xfs_read_ioend_bioset);*/
+	bioset_exit(&xfs_read_ioend_bioset);
 }
 
 static void
