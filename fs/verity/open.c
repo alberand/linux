@@ -137,8 +137,7 @@ int fsverity_init_merkle_tree_params(struct merkle_tree_params *params,
 	 * explicitly check for that too.  Note, this is only for hash block
 	 * indices; data block indices might not fit in an 'unsigned long'.
 	 */
-	if ((params->block_size != PAGE_SIZE && offset > 1 << 23) ||
-	    offset > ULONG_MAX) {
+	if (offset > ULONG_MAX) {
 		fsverity_err(inode, "Too many blocks in Merkle tree");
 		err = -EFBIG;
 		goto out_err;
