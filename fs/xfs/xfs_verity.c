@@ -81,21 +81,17 @@ xfs_drop_merkle_tree(
 		.value		= NULL,
 	};
 
-	for (index = 0; offset < merkle_tree_size; index++) {
-		error = xfs_attr_set(&args);
-		/* ignore those which weren't create yet */
-		if (error && error != -ENOATTR)
-			return error;
-
-		offset = index << log_blocksize;
+	for (index = 1; offset < merkle_tree_size; index++) {
 		xfs_fsverity_merkle_key_to_disk(&name, offset);
 		args.name = (const uint8_t *)&name.merkleoff;
-		args.value = NULL;
 		args.attr_filter = XFS_ATTR_VERITY;
+		error = xfs_attr_set(&args);
+		offset = index << log_blocksize;
 	}
 
-	args.name = XFS_VERITY_DESCRIPTOR_NAME;
+	args.name = (const uint8_t*)XFS_VERITY_DESCRIPTOR_NAME;
 	args.namelen = XFS_VERITY_DESCRIPTOR_NAME_LEN;
+	args.attr_filter = XFS_ATTR_VERITY;
 	error = xfs_attr_set(&args);
 
 	return error;
