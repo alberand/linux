@@ -23,11 +23,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1692799911,
-        "narHash": "sha256-3eihraek4qL744EvQXsK1Ha6C3CR7nnT8X2qWap4RNk=",
+        "lastModified": 1694529238,
+        "narHash": "sha256-zsNZZGTGnMOf9YpHKJqMSsa0dXbfmxeoJ7xHlrt+xmY=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "f9e7cf818399d17d347f847525c5a5a8032e4e44",
+        "rev": "ff7b65b44d01cf9ba6a71320833626af21126384",
         "type": "github"
       },
       "original": {
@@ -41,11 +41,11 @@
         "systems": "systems_2"
       },
       "locked": {
-        "lastModified": 1692799911,
-        "narHash": "sha256-3eihraek4qL744EvQXsK1Ha6C3CR7nnT8X2qWap4RNk=",
+        "lastModified": 1694529238,
+        "narHash": "sha256-zsNZZGTGnMOf9YpHKJqMSsa0dXbfmxeoJ7xHlrt+xmY=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "f9e7cf818399d17d347f847525c5a5a8032e4e44",
+        "rev": "ff7b65b44d01cf9ba6a71320833626af21126384",
         "type": "github"
       },
       "original": {
@@ -57,8 +57,8 @@
     "kernel-config": {
       "flake": false,
       "locked": {
-        "lastModified": 1694508883,
-        "narHash": "sha256-3SftEHCjkeTVCYRO7KL3j7SF9LvqD9YN27SP6hvej1M=",
+        "lastModified": 1695122571,
+        "narHash": "sha256-biLcbF579Yqvzu0FyxQVDWpIe5x2ITxYJGx1Il6xRNY=",
         "path": "/home/alberand/Projects/xfs-verity-v3/.config",
         "type": "path"
       },
@@ -70,8 +70,8 @@
     "kernel-config_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1694096235,
-        "narHash": "sha256-QghYnIXkuApVy/eOYNe9tKJ/dlLeHG9gJmXWkyy/9rI=",
+        "lastModified": 1694699395,
+        "narHash": "sha256-NlJ+0TbhQOWyj8keTn+cE8U9QtEN7HG26SEeF4sRkKU=",
         "path": "/home/alberand/Projects/xfs-verity-v3/.config",
         "type": "path"
       },
@@ -87,14 +87,15 @@
         "kernel-config": "kernel-config_2",
         "nixos-generators": "nixos-generators",
         "nixpkgs": "nixpkgs_3",
-        "pkgs": "pkgs"
+        "pkgs": "pkgs",
+        "xfstests-config": "xfstests-config"
       },
       "locked": {
-        "lastModified": 1694515765,
-        "narHash": "sha256-6koWDRgK6oFPg91VByuMC+9Dx0Si4hc2dFxGm4RtonY=",
+        "lastModified": 1695128484,
+        "narHash": "sha256-PqKGYVjV1DPia/tZclqTkdH/z9pRTlRUIMk3Vk4szEs=",
         "owner": "alberand",
         "repo": "nix-kernel-vm",
-        "rev": "5953d909d16e810bba017b2255554d71b7654432",
+        "rev": "7c740b70d0453ddbd560a12f9fdb2a794704b8e6",
         "type": "github"
       },
       "original": {
@@ -171,11 +172,11 @@
     },
     "nixpkgs_3": {
       "locked": {
-        "lastModified": 1693985761,
-        "narHash": "sha256-K5b+7j7Tt3+AqbWkcw+wMeqOAWyCD1MH26FPZyWXpdo=",
+        "lastModified": 1694767346,
+        "narHash": "sha256-5uH27SiVFUwsTsqC5rs3kS7pBoNhtoy9QfTP9BmknGk=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0bffda19b8af722f8069d09d8b6a24594c80b352",
+        "rev": "ace5093e36ab1e95cb9463863491bee90d5a4183",
         "type": "github"
       },
       "original": {
@@ -187,11 +188,11 @@
     },
     "nixpkgs_4": {
       "locked": {
-        "lastModified": 1694422566,
-        "narHash": "sha256-lHJ+A9esOz9vln/3CJG23FV6Wd2OoOFbDeEs4cMGMqc=",
+        "lastModified": 1694959747,
+        "narHash": "sha256-CXQ2MuledDVlVM5dLC4pB41cFlBWxRw4tCBsFrq3cRk=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "3a2786eea085f040a66ecde1bc3ddc7099f6dbeb",
+        "rev": "970a59bd19eff3752ce552935687100c46e820a5",
         "type": "github"
       },
       "original": {
@@ -203,11 +204,11 @@
     },
     "pkgs": {
       "locked": {
-        "lastModified": 1693985761,
-        "narHash": "sha256-K5b+7j7Tt3+AqbWkcw+wMeqOAWyCD1MH26FPZyWXpdo=",
+        "lastModified": 1694767346,
+        "narHash": "sha256-5uH27SiVFUwsTsqC5rs3kS7pBoNhtoy9QfTP9BmknGk=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0bffda19b8af722f8069d09d8b6a24594c80b352",
+        "rev": "ace5093e36ab1e95cb9463863491bee90d5a4183",
         "type": "github"
       },
       "original": {
@@ -223,7 +224,7 @@
         "nixpkgs": "nixpkgs_4",
         "xfsprogs": "xfsprogs",
         "xfstests": "xfstests",
-        "xfstests-config": "xfstests-config"
+        "xfstests-config": "xfstests-config_2"
       }
     },
     "systems": {
@@ -276,10 +277,8 @@
     "xfstests": {
       "flake": false,
       "locked": {
-        "lastModified": 1694446822,
-        "narHash": "sha256-92wzADsgjpHTjEnqA1yNcffdJv5fUMVF+yIbP+daZmo=",
-        "ref": "refs/heads/fsverity-v2",
-        "rev": "c258ab75eb7bf650f3382e2a3e45943f8347c594",
+        "lastModified": 1694689059,
+        "narHash": "sha256-QQNFSVbmvoNzmIgpsrGK7uCDdORX+6LJQGIsz9sTeYI=",
         "shallow": true,
         "type": "git",
         "url": "file:/home/alberand/Projects/xfstests-dev?branch=fsverity-v2"
@@ -293,8 +292,21 @@
     "xfstests-config": {
       "flake": false,
       "locked": {
-        "lastModified": 1694525004,
-        "narHash": "sha256-yrdtIqVjoWfH/CwcvYnNx9xVzukBSdcyRcZq1tun1ro=",
+        "lastModified": 1695054430,
+        "narHash": "sha256-PGTiBkC3gGs3HS/dvtDijFpYLqg9WGygcbGk9uuf2Bw=",
+        "path": "/home/alberand/Projects/nix-kernel-vm/xfstests.config",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/alberand/Projects/nix-kernel-vm/xfstests.config",
+        "type": "path"
+      }
+    },
+    "xfstests-config_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1695124928,
+        "narHash": "sha256-IwI4J+vY9Cye1e8PjZgbIuR/OzxxFb5kPdWk935C6Wc=",
         "path": "/home/alberand/Projects/xfs-verity-v3/xfstests-config",
         "type": "path"
       },
