@@ -181,4 +181,6 @@ int fsverity_read_merkle_tree_block(struct inode *inode,
 				    unsigned int log_blocksize,
 				    u64 ra_bytes);
 
+#include <trace/events/fsverity.h>
+
 #endif /* _FSVERITY_PRIVATE_H */
