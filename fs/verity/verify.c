@@ -39,13 +39,12 @@ static bool is_hash_block_verified(struct fsverity_info *vi,
  */
 static bool
 verify_data_block(struct inode *inode, struct fsverity_info *vi,
-		  const void *data, u64 data_pos, unsigned long max_ra_pages)
+		  const void *data, u64 data_pos, u64 max_ra_bytes)
 {
 	const struct merkle_tree_params *params = &vi->tree_params;
 	const unsigned int hsize = params->digest_size;
 	int level;
 	int err;
-	int num_ra_pages;
 	u8 _want_hash[FS_VERITY_MAX_DIGEST_SIZE];
 	const u8 *want_hash;
 	u8 real_hash[FS_VERITY_MAX_DIGEST_SIZE];
@@ -92,9 +91,11 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 	for (level = 0; level < params->num_levels; level++) {
 		unsigned long next_hidx;
 		unsigned long hblock_idx;
-		pgoff_t hpage_idx;
 		unsigned int hoffset;
 		struct fsverity_blockbuf *block = &hblocks[level].block;
+		u64 block_offset;
+		u64 ra_bytes = 0;
+		u64 tree_size;
 
 		/*
 		 * The index of the block in the current level; also the index
@@ -105,18 +106,20 @@ verify_data_block(struct inode *inode, struct fsverity_info *vi,
 		/* Index of the hash block in the tree overall */
 		hblock_idx = params->level_start[level] + next_hidx;
 
-		/* Index of the hash page in the tree overall */
-		hpage_idx = hblock_idx >> params->log_blocks_per_page;
+		/* Offset of the Merkle tree block into the tree */
+		block_offset = hblock_idx << params->log_blocksize;
 
 		/* Byte offset of the hash within the block */
 		hoffset = (hidx << params->log_digestsize) &
 			  (params->block_size - 1);
 
-		num_ra_pages = level == 0 ?
-			min(max_ra_pages, params->tree_pages - hpage_idx) : 0;
+		if (level == 0) {
+			tree_size = params->tree_pages << PAGE_SHIFT;
+			ra_bytes = min(max_ra_bytes, (tree_size - block_offset));
+		}
 		err = fsverity_read_merkle_tree_block(
-			inode, hblock_idx << params->log_blocksize, block,
-			params->log_blocksize, num_ra_pages);
+			inode, block_offset, block,
+			params->log_blocksize, ra_bytes);
 		if (err) {
 			fsverity_err(inode,
 				     "Error %d reading Merkle tree block %lu",
@@ -182,7 +185,7 @@ error:
 
 static bool
 verify_data_blocks(struct folio *data_folio, size_t len, size_t offset,
-		   unsigned long max_ra_pages)
+		   u64 max_ra_bytes)
 {
 	struct inode *inode = data_folio->mapping->host;
 	struct fsverity_info *vi = inode->i_verity_info;
@@ -200,7 +203,7 @@ verify_data_blocks(struct folio *data_folio, size_t len, size_t offset,
 
 		data = kmap_local_folio(data_folio, offset);
 		valid = verify_data_block(inode, vi, data, pos + offset,
-					  max_ra_pages);
+					  max_ra_bytes);
 		kunmap_local(data);
 		if (!valid)
 			return false;
@@ -246,24 +249,24 @@ EXPORT_SYMBOL_GPL(fsverity_verify_blocks);
 void fsverity_verify_bio(struct bio *bio)
 {
 	struct folio_iter fi;
-	unsigned long max_ra_pages = 0;
+	u64 max_ra_bytes = 0;
 
 	if (bio->bi_opf & REQ_RAHEAD) {
 		/*
 		 * If this bio is for data readahead, then we also do readahead
 		 * of the first (largest) level of the Merkle tree.  Namely,
-		 * when a Merkle tree page is read, we also try to piggy-back on
-		 * some additional pages -- up to 1/4 the number of data pages.
+		 * when a Merkle tree is read, we also try to piggy-back on
+		 * some additional bytes -- up to 1/4 of data.
 		 *
 		 * This improves sequential read performance, as it greatly
 		 * reduces the number of I/O requests made to the Merkle tree.
 		 */
-		max_ra_pages = bio->bi_iter.bi_size >> (PAGE_SHIFT + 2);
+		max_ra_bytes = bio->bi_iter.bi_size >> 2;
 	}
 
 	bio_for_each_folio_all(fi, bio) {
 		if (!verify_data_blocks(fi.folio, fi.length, fi.offset,
-					max_ra_pages)) {
+					max_ra_bytes)) {
 			bio->bi_status = BLK_STS_IOERR;
 			break;
 		}
@@ -431,7 +434,7 @@ int fsverity_read_merkle_tree_block(struct inode *inode,
 					u64 pos,
 					struct fsverity_blockbuf *block,
 					unsigned int log_blocksize,
-					unsigned long num_ra_pages)
+					u64 ra_bytes)
 {
 	struct page *page;
 	int err = 0;
@@ -439,10 +442,10 @@ int fsverity_read_merkle_tree_block(struct inode *inode,
 
 	if (inode->i_sb->s_vop->read_merkle_tree_block)
 		return inode->i_sb->s_vop->read_merkle_tree_block(
-			inode, pos, block, log_blocksize, num_ra_pages);
+			inode, pos, block, log_blocksize, ra_bytes);
 
 	page = inode->i_sb->s_vop->read_merkle_tree_page(
-			inode, index, num_ra_pages);
+			inode, index, (ra_bytes >> PAGE_SHIFT));
 	if (IS_ERR(page)) {
 		err = PTR_ERR(page);
 		fsverity_err(inode,

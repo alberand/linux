@@ -160,7 +160,7 @@ void fsverity_drop_block(struct inode *inode,
  * @inode: inode in use for verification or metadata reading
  * @pos: byte offset of the block within the Merkle tree
  * @block: block to read
- * @num_ra_pages: number of pages to readahead, may be ignored
+ * @ra_bytes: number of bytes to readahead, may be ignored
  *
  * Depending on fs implementation use read_merkle_tree_block() or
  * read_merkle_tree_page() to read blocks.
@@ -169,6 +169,6 @@ int fsverity_read_merkle_tree_block(struct inode *inode,
 				    u64 pos,
 				    struct fsverity_blockbuf *block,
 				    unsigned int log_blocksize,
-				    unsigned long num_ra_pages);
+				    u64 ra_bytes);
 
 #endif /* _FSVERITY_PRIVATE_H */
