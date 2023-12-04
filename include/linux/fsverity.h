@@ -143,8 +143,8 @@ struct fsverity_operations {
 	 * @pos: byte offset of the block within the Merkle tree
 	 * @block: block buffer for filesystem to point it to the block
 	 * @log_blocksize: size of the expected block
-	 * @num_ra_pages: The number of pages with blocks that should be
-	 *		  prefetched starting at @index if the page at @index
+	 * @ra_bytes: The number of bytes that should be
+	 *		  prefetched starting at @pos if the data at @pos
 	 *		  isn't already cached.  Implementations may ignore this
 	 *		  argument; it's only a performance optimization.
 	 *
@@ -161,7 +161,7 @@ struct fsverity_operations {
 				      u64 pos,
 				      struct fsverity_blockbuf *block,
 				      unsigned int log_blocksize,
-				      unsigned long num_ra_pages);
+				      u64 ra_bytes);
 
 	/**
 	 * Write a Merkle tree block to the given inode.
