@@ -1239,7 +1239,20 @@ xfs_link(
 	 * the tree quota mechanism could be circumvented.
 	 */
 	if (unlikely((tdp->i_diflags & XFS_DIFLAG_PROJINHERIT) &&
+		     !special_file(sip) &&
 		     tdp->i_projid != sip->i_projid)) {
+		error = -EXDEV;
+		goto error_return;
+	}
+
+	/*
+	 * Don't allow cross-linking of special files. However, allow
+	 * cross-linking if original file doesn't have any project.
+	 */
+	if (unlikely((tdp->i_diflags & XFS_DIFLAG_PROJINHERIT) &&
+				special_file(sip) &&
+				sip->i_projid != 0 &&
+				tdp->i_projid != sip->i_projid)) {
 		error = -EXDEV;
 		goto error_return;
 	}
