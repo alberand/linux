@@ -200,6 +200,10 @@ static inline struct fsverity_info *fsverity_get_info(const struct inode *inode)
 	return smp_load_acquire(&inode->i_verity_info);
 }
 
+/* init.c */
+int fsverity_init_sb(struct super_block *sb,
+		     const struct fsverity_operations *ops);
+
 /* enable.c */
 
 int fsverity_ioctl_enable(struct file *filp, const void __user *arg);

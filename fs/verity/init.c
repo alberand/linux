@@ -72,3 +72,20 @@ static int __init fsverity_init(void)
 	return 0;
 }
 late_initcall(fsverity_init)
+
+int fsverity_init_sb(struct super_block *sb,
+		     const struct fsverity_operations *ops)
+{
+	sb->s_vop = ops;
+
+	/* Create per-sb workqueue for post read bio verification */
+	struct workqueue_struct *wq = alloc_workqueue(
+		"verity/%s", (WQ_FREEZABLE | WQ_MEM_RECLAIM), 0, sb->s_id);
+	if (!wq)
+		return -ENOMEM;
+
+	sb->s_verity_wq = wq;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(fsverity_init_sb);
