@@ -2308,6 +2308,9 @@ xfs_da_grow_inode_int(
 	if (error)
 		return error;
 
+	if (*bno > XFS_MAX_DABLK)
+		return -EFBIG;
+
 	/*
 	 * Try mapping it in one filesystem block.
 	 */

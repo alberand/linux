@@ -529,6 +529,9 @@ xfs_attr_rmt_find_hole(
 	if (error)
 		return error;
 
+	if (lfileoff > XFS_MAX_DABLK)
+		return -EFBIG;
+
 	args->rmtblkno = (xfs_dablk_t)lfileoff;
 	args->rmtblkcnt = blkcnt;
 
