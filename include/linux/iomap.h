@@ -326,6 +326,11 @@ struct iomap_readpage_ctx {
 };
 
 void iomap_read_end_io(struct bio *bio);
+#ifdef CONFIG_FS_VERITY
+void iomap_read_fsverity_end_io_work(struct work_struct *work);
+#else
+#define iomap_read_fsverity_end_io_work (0)
+#endif /* CONFIG_FS_VERITY */
 ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *from,
 		const struct iomap_ops *ops, void *private);
 int iomap_read_folio_ctx(struct iomap_readpage_ctx *ctx,

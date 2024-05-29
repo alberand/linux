@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/compiler.h>
 #include <linux/fs.h>
+#include <linux/fsverity.h>
 #include <linux/iomap.h>
 #include <linux/pagemap.h>
 #include <linux/uio.h>
@@ -22,6 +23,8 @@
 #include "../internal.h"
 
 #define IOEND_BATCH_SIZE	4096
+
+#define IOMAP_POOL_SIZE		(4 * (PAGE_SIZE / SECTOR_SIZE))
 
 /*
  * Structure allocated for each folio to track per-block uptodate, dirty state
@@ -362,6 +365,19 @@ static inline bool iomap_block_needs_zeroing(const struct iomap_iter *iter,
 		 !(srcmap->flags & IOMAP_F_BEYOND_EOF));
 }
 
+#ifdef CONFIG_FS_VERITY
+void
+iomap_read_fsverity_end_io_work(struct work_struct *work)
+{
+	struct iomap_read_ioend *fbio =
+		container_of(work, struct iomap_read_ioend, io_work);
+
+	fsverity_verify_bio(&fbio->io_bio);
+	iomap_read_end_io(&fbio->io_bio);
+}
+
+#endif /* CONFIG_FS_VERITY */
+
 static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		struct iomap_readpage_ctx *ctx, loff_t offset)
 {
@@ -376,6 +392,10 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 	struct iomap_read_ioend *ioend;
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
 
+	/* Fail reads from broken fsverity files immediately. */
+	if (IS_VERITY(iter->inode) && !fsverity_active(iter->inode))
+		return -EIO;
+
 	if (iomap->type == IOMAP_INLINE)
 		return iomap_read_inline_data(iter, folio);
 
@@ -387,6 +407,12 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 
 	if (iomap_block_needs_zeroing(iter, pos)) {
 		folio_zero_range(folio, poff, plen);
+		if (!(srcmap->flags & IOMAP_F_BEYOND_EOF) &&
+		    fsverity_active(iter->inode) &&
+		    !fsverity_verify_blocks(folio, plen, poff)) {
+			return -EIO;
+		}
+
 		iomap_set_range_uptodate(folio, poff, plen);
 		goto done;
 	}
@@ -2176,13 +2202,13 @@ static int __init iomap_buffered_init(void)
 	int error = 0;
 
 	error = bioset_init(&iomap_read_ioend_bioset,
-			   4 * (PAGE_SIZE / SECTOR_SIZE),
+			   IOMAP_POOL_SIZE,
 			   offsetof(struct iomap_read_ioend, io_bio),
 			   BIOSET_NEED_BVECS);
 	if (error)
 		return error;
 
-	return bioset_init(&iomap_ioend_bioset, 4 * (PAGE_SIZE / SECTOR_SIZE),
+	return bioset_init(&iomap_ioend_bioset, IOMAP_POOL_SIZE,
 			   offsetof(struct iomap_ioend, io_bio),
 			   BIOSET_NEED_BVECS);
 }
