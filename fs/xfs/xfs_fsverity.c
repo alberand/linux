@@ -19,6 +19,7 @@
 #include "xfs_fsverity.h"
 #include "xfs_iomap.h"
 #include "xfs_error.h"
+#include "xfs_health.h"
 #include <linux/fsverity.h>
 #include <linux/pagemap.h>
 
@@ -346,6 +347,15 @@ xfs_fsverity_write_merkle(
 	return xfs_fsverity_write(ip, position, size, buf);
 }
 
+static void
+xfs_fsverity_file_corrupt(
+	struct inode		*inode,
+	loff_t			pos,
+	size_t			len)
+{
+	xfs_inode_mark_sick(XFS_I(inode), XFS_SICK_INO_DATA);
+}
+
 const ptrdiff_t info_offs = (int)offsetof(struct xfs_inode, i_verity_info) -
 			    (int)offsetof(struct xfs_inode, i_vnode);
 
@@ -356,4 +366,5 @@ const struct fsverity_operations xfs_fsverity_ops = {
 	.get_verity_descriptor		= xfs_fsverity_get_descriptor,
 	.read_merkle_tree_page		= xfs_fsverity_read_merkle,
 	.write_merkle_tree_block	= xfs_fsverity_write_merkle,
+	.file_corrupt			= xfs_fsverity_file_corrupt,
 };
