@@ -414,6 +414,8 @@ xfs_inode_can_atomicwrite(
  */
 #define XFS_IREMAPPING		(1U << 15)
 
+#define XFS_VERITY_CONSTRUCTION	(1U << 16) /* merkle tree construction */
+
 /* All inode state flags related to inode reclaim. */
 #define XFS_ALL_IRECLAIM_FLAGS	(XFS_IRECLAIMABLE | \
 				 XFS_IRECLAIM | \
