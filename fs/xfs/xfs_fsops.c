@@ -24,6 +24,7 @@
 #include "xfs_rtalloc.h"
 #include "xfs_rtrmap_btree.h"
 #include "xfs_rtrefcount_btree.h"
+#include "xfs_fsverity.h"
 
 /*
  * Write new AG headers to disk. Non-transactional, but need to be

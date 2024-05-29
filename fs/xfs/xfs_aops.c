@@ -19,6 +19,8 @@
 #include "xfs_reflink.h"
 #include "xfs_errortag.h"
 #include "xfs_error.h"
+#include "xfs_fsverity.h"
+#include <linux/fsverity.h>
 
 struct xfs_writepage_ctx {
 	struct iomap_writepage_ctx ctx;
@@ -132,6 +134,11 @@ xfs_end_ioend(
 
 	if (!error && xfs_ioend_is_append(ioend))
 		error = xfs_setfilesize(ip, ioend->io_offset, ioend->io_size);
+
+	/* Inodes with fsverity are read-only. The only data written is
+	 * merkle tree, during fsverity enable phase. */
+	if (fsverity_active(VFS_I(ip)))
+		error = xfs_fsverity_end_ioend(ip, ioend);
 done:
 	iomap_finish_ioends(ioend, error);
 	memalloc_nofs_restore(nofs_flag);
