@@ -23,6 +23,7 @@
 #include "xfs_fsverity.h"
 #include "xfs_iomap.h"
 #include "xfs_bmap.h"
+#include "xfs_health.h"
 #include <linux/fsverity.h>
 
 /*
@@ -429,10 +430,20 @@ xfs_fsverity_write_merkle(
 			&xfs_fsverity_write_iomap_ops);
 }
 
+static void
+xfs_fsverity_file_corrupt(
+	struct inode		*inode,
+	loff_t			pos,
+	size_t			len)
+{
+	xfs_inode_mark_sick(XFS_I(inode), XFS_SICK_INO_DATA);
+}
+
 const struct fsverity_operations xfs_fsverity_ops = {
 	.begin_enable_verity		= xfs_fsverity_begin_enable,
 	.end_enable_verity		= xfs_fsverity_end_enable,
 	.get_verity_descriptor		= xfs_fsverity_get_descriptor,
 	.read_merkle_tree_page		= xfs_fsverity_read_merkle,
 	.write_merkle_tree_block	= xfs_fsverity_write_merkle,
+	.file_corrupt			= xfs_fsverity_file_corrupt,
 };
