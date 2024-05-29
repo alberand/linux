@@ -6,8 +6,10 @@
 #define __XFS_FSVERITY_H__
 
 #include "xfs_platform.h"
+#include <linux/fsverity.h>
 
 #ifdef CONFIG_FS_VERITY
+extern const struct fsverity_operations xfs_fsverity_ops;
 loff_t xfs_fsverity_metadata_offset(const struct xfs_inode *ip);
 bool xfs_fsverity_is_file_data(const struct xfs_inode *ip, loff_t offset);
 #else
