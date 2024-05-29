@@ -21,6 +21,7 @@
 #include "xfs_ag.h"
 #include "xfs_ag_resv.h"
 #include "xfs_trace.h"
+#include "xfs_fsverity.h"
 
 /*
  * Write new AG headers to disk. Non-transactional, but need to be

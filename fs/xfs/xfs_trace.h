@@ -98,6 +98,7 @@ struct xfs_rmap_intent;
 struct xfs_refcount_intent;
 struct xfs_metadir_update;
 struct xfs_rtgroup;
+struct xfs_merkle_bkey;
 
 #define XFS_ATTR_FILTER_FLAGS \
 	{ XFS_ATTR_ROOT,	"ROOT" }, \
@@ -5575,6 +5576,44 @@ DEFINE_EVENT(xfs_metadir_class, name, \
 		 xfs_ino_t ino), \
 	TP_ARGS(dp, name, ino))
 DEFINE_METADIR_EVENT(xfs_metadir_lookup);
+
+#ifdef CONFIG_FS_VERITY
+DECLARE_EVENT_CLASS(xfs_fsverity_cache_class,
+	TP_PROTO(struct xfs_mount *mp, const struct xfs_merkle_bkey *key,
+		 unsigned long caller_ip),
+	TP_ARGS(mp, key, caller_ip),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ino)
+		__field(u64, pos)
+		__field(void *, caller_ip)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->ino = key->ino;
+		__entry->pos = key->pos;
+		__entry->caller_ip = (void *)caller_ip;
+	),
+	TP_printk("dev %d:%d ino 0x%llx pos 0x%llx caller %pS",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->ino,
+		  __entry->pos,
+		  __entry->caller_ip)
+)
+
+#define DEFINE_XFS_FSVERITY_CACHE_EVENT(name) \
+DEFINE_EVENT(xfs_fsverity_cache_class, name, \
+	TP_PROTO(struct xfs_mount *mp, const struct xfs_merkle_bkey *key, \
+		 unsigned long caller_ip), \
+	TP_ARGS(mp, key, caller_ip))
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_miss);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_hit);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_reuse);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_store);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_drop);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_unmount);
+DEFINE_XFS_FSVERITY_CACHE_EVENT(xfs_fsverity_cache_reclaim);
+#endif /* CONFIG_XFS_VERITY */
 
 #endif /* _TRACE_XFS_H */
 

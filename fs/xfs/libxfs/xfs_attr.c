@@ -28,6 +28,7 @@
 #include "xfs_xattr.h"
 #include "xfs_parent.h"
 #include "xfs_iomap.h"
+#include "xfs_verity.h"
 
 struct kmem_cache		*xfs_attr_intent_cache;
 
@@ -1765,6 +1766,9 @@ xfs_attr_namecheck(
 	/* Only one namespace bit allowed. */
 	if (!xfs_attr_check_namespace(attr_flags))
 		return false;
+
+	if (attr_flags & XFS_ATTR_VERITY)
+		return xfs_verity_namecheck(attr_flags, name, length);
 
 	/*
 	 * MAXNAMELEN includes the trailing null, but (name/length) leave it

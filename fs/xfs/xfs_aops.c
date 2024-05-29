@@ -19,6 +19,8 @@
 #include "xfs_reflink.h"
 #include "xfs_errortag.h"
 #include "xfs_error.h"
+#include "xfs_fsverity.h"
+#include <linux/fsverity.h>
 
 struct xfs_writepage_ctx {
 	struct iomap_writepage_ctx ctx;
@@ -132,6 +134,10 @@ xfs_end_ioend(
 
 	if (!error && xfs_ioend_is_append(ioend))
 		error = xfs_setfilesize(ip, ioend->io_offset, ioend->io_size);
+
+	/* This IO was to the Merkle tree region */
+	if (xfs_fsverity_in_region(ioend->io_offset))
+		error = xfs_fsverity_end_ioend(ip, ioend);
 done:
 	iomap_finish_ioends(ioend, error);
 	memalloc_nofs_restore(nofs_flag);
@@ -512,19 +518,65 @@ xfs_vm_bmap(
 	return iomap_bmap(mapping, block, &xfs_read_iomap_ops);
 }
 
+static void
+xfs_read_end_io(
+	struct bio *bio)
+{
+	struct iomap_read_ioend *ioend =
+		container_of(bio, struct iomap_read_ioend, io_bio);
+	struct xfs_inode	*ip = XFS_I(ioend->io_inode);
+
+	WARN_ON_ONCE(!queue_work(ip->i_mount->m_postread_workqueue,
+					&ioend->io_work));
+}
+
+static void
+xfs_prepare_read_ioend(
+	struct iomap_read_ioend	*ioend)
+{
+	if (ioend->io_flags & IOMAP_F_BEYOND_EOF) {
+		INIT_WORK(&ioend->io_work, &xfs_attr_verify_args);
+		ioend->io_bio.bi_end_io = &xfs_read_end_io;
+		return;
+	}
+
+	if (!fsverity_active(ioend->io_inode))
+		return;
+
+	INIT_WORK(&ioend->io_work, &iomap_read_fsverity_end_io_work);
+	ioend->io_bio.bi_end_io = &xfs_read_end_io;
+}
+
+static const struct iomap_readpage_ops xfs_readpage_ops = {
+	.prepare_ioend		= &xfs_prepare_read_ioend,
+};
+
 STATIC int
 xfs_vm_read_folio(
 	struct file		*unused,
 	struct folio		*folio)
 {
-	return iomap_read_folio(folio, &xfs_read_iomap_ops);
+	struct iomap_readpage_ops xfs_readpage_ops = {
+		.prepare_ioend	= xfs_prepare_read_ioend
+	};
+	struct iomap_readpage_ctx ctx = {
+		.cur_folio	= folio,
+		.ops		= &xfs_readpage_ops,
+	};
+
+	return iomap_read_folio_ctx(&ctx, &xfs_read_iomap_ops);
 }
 
 STATIC void
 xfs_vm_readahead(
 	struct readahead_control	*rac)
 {
-	iomap_readahead(rac, &xfs_read_iomap_ops);
+	struct iomap_readpage_ctx ctx = {
+		.rac = rac,
+		.ops = &xfs_readpage_ops,
+	};
+
+	iomap_readahead_ctx(&ctx, &xfs_read_iomap_ops);
 }
 
 static int
