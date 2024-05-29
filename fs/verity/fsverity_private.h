@@ -152,8 +152,6 @@ static inline void fsverity_init_signature(void)
 
 /* verify.c */
 
-void __init fsverity_init_workqueue(void);
-
 #include <trace/events/fsverity.h>
 
 #endif /* _FSVERITY_PRIVATE_H */
