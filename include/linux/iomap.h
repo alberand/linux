@@ -106,6 +106,11 @@ struct vm_fault;
 #define IOMAP_F_STALE		(1U << 15)
 
 /*
+ * IO happens beyound inode EOF, fsverity metadata is stored there
+ */
+#define IOMAP_F_FSVERITY	(1U << 16)
+
+/*
  * Magic value for addr:
  */
 #define IOMAP_NULL_ADDR -1ULL	/* addr is not valid */
