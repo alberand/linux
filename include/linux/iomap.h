@@ -56,6 +56,9 @@ struct vm_fault;
  *
  * IOMAP_F_BOUNDARY indicates that I/O and I/O completions for this iomap must
  * never be merged with the mapping before it.
+ *
+ * IOMAP_F_FSVERITY indicates that I/O is happening on a fs-verity range. Those
+ * folios don't need verification as they contain merkle tree.
  */
 #define IOMAP_F_NEW		(1U << 0)
 #define IOMAP_F_DIRTY		(1U << 1)
@@ -68,6 +71,7 @@ struct vm_fault;
 #endif /* CONFIG_BUFFER_HEAD */
 #define IOMAP_F_XATTR		(1U << 5)
 #define IOMAP_F_BOUNDARY	(1U << 6)
+#define IOMAP_F_FSVERITY	(1U << 7)
 
 /*
  * Flags set by the core iomap code during operations:
@@ -421,5 +425,17 @@ int iomap_swapfile_activate(struct swap_info_struct *sis,
 #else
 # define iomap_swapfile_activate(sis, swapfile, pagespan, ops)	(-EIO)
 #endif /* CONFIG_SWAP */
+
+#ifdef CONFIG_FS_VERITY
+struct folio *iomap_fsverity_read(struct inode *inode, loff_t pos,
+				  size_t length, loff_t offset,
+				  const struct iomap_ops *ops);
+int iomap_fsverity_write(struct inode *inode, const void *buf, loff_t pos,
+			 size_t length, loff_t offset,
+			 const struct iomap_ops *ops);
+#else
+# define iomap_fsverity_read(...)	(-EOPNOTSUPP)
+# define iomap_fsverity_write(...)	(-EOPNOTSUPP)
+#endif /* CONFIG_FS_VERITY */
 
 #endif /* LINUX_IOMAP_H */
