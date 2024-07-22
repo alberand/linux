@@ -26,6 +26,8 @@
 
 #define IOMAP_POOL_SIZE		(4 * (PAGE_SIZE / SECTOR_SIZE))
 
+#define IOMAP_READ_VERITY	(1LL << 0)
+
 typedef int (*iomap_punch_t)(struct inode *inode, loff_t offset, loff_t length);
 /*
  * Structure allocated for each folio to track per-block uptodate, dirty state
@@ -45,6 +47,10 @@ struct iomap_folio_state {
 };
 
 static struct bio_set iomap_ioend_bioset;
+static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
+		size_t len, struct folio **foliop);
+static bool iomap_write_end(struct iomap_iter *iter, loff_t pos, size_t len,
+		size_t copied, struct folio *folio);
 
 static inline bool ifs_is_fully_uptodate(struct folio *folio,
 		struct iomap_folio_state *ifs)
@@ -331,7 +337,10 @@ struct iomap_readpage_ctx {
 	bool			cur_folio_in_bio;
 	struct bio		*bio;
 	struct readahead_control *rac;
+	int			flags;
 };
+static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
+		struct iomap_readpage_ctx *ctx, loff_t offset);
 
 /**
  * iomap_read_inline_data - copy inline data into the page cache
@@ -369,7 +378,8 @@ static inline bool iomap_block_needs_zeroing(const struct iomap_iter *iter,
 
 	return srcmap->type != IOMAP_MAPPED ||
 		(srcmap->flags & IOMAP_F_NEW) ||
-		pos >= i_size_read(iter->inode);
+		(pos >= i_size_read(iter->inode) &&
+		 !(srcmap->flags & IOMAP_F_BEYOND_EOF));
 }
 
 #ifdef CONFIG_FS_VERITY
@@ -458,17 +468,115 @@ iomap_fsverity_read_bio_alloc(struct inode *inode, struct block_device *bdev,
 	}
 	return bio;
 }
+
+struct folio *
+iomap_fsverity_read(struct inode *inode, loff_t pos, size_t length,
+		loff_t offset, const struct iomap_ops *ops)
+{
+	int ret;
+	struct folio *folio;
+	struct iomap_readpage_ctx ctx;
+	fgf_t fgp = FGP_CREAT | FGP_LOCK | fgf_set_order(length);
+	pgoff_t index = (pos | offset) >> PAGE_SHIFT;
+	struct iomap_iter iter = {
+		.inode = inode,
+	};
+
+	folio = __filemap_get_folio(inode->i_mapping, index,
+			fgp, mapping_gfp_mask(inode->i_mapping));
+
+	iter.pos = folio_pos(folio);
+	iter.len = folio_size(folio);
+	ctx.cur_folio = folio;
+	ctx.flags = IOMAP_READ_VERITY;
+
+	while ((ret = iomap_iter(&iter, ops)) > 0)
+		iter.processed = iomap_readpage_iter(&iter, &ctx, 0);
+
+	if (ret < 0)
+		folio_set_error(folio);
+
+	if (ctx.bio) {
+		submit_bio(ctx.bio);
+		WARN_ON_ONCE(!ctx.cur_folio_in_bio);
+	} else {
+		WARN_ON_ONCE(ctx.cur_folio_in_bio);
+		folio_unlock(folio);
+	}
+
+	return folio;
+}
+EXPORT_SYMBOL_GPL(iomap_fsverity_read);
+
+static loff_t iomap_fsverity_write_iter(struct iomap_iter *iter, const void *buf)
+{
+	loff_t pos = iter->pos;
+	loff_t length = iomap_length(iter);
+	loff_t written = 0;
+
+	do {
+		struct folio *folio;
+		int status;
+		size_t offset;
+		size_t bytes = min_t(u64, SIZE_MAX, length);
+		bool ret;
+
+		status = iomap_write_begin(iter, pos, bytes, &folio);
+		if (status)
+			return status;
+		if (iter->iomap.flags & IOMAP_F_STALE)
+			break;
+
+		offset = offset_in_folio(folio, pos);
+		if (bytes > folio_size(folio) - offset)
+			bytes = folio_size(folio) - offset;
+
+		memcpy_to_folio(folio, offset, buf, bytes);
+
+		ret = iomap_write_end(iter, pos, bytes, bytes, folio);
+		if (WARN_ON_ONCE(!ret))
+			return -EIO;
+
+		pos += bytes;
+		length -= bytes;
+		written += bytes;
+	} while (length > 0);
+
+	return written;
+}
+
+int
+iomap_fsverity_write(struct inode *inode, const void *buf, loff_t pos,
+		size_t length, loff_t offset, const struct iomap_ops *ops)
+{
+	struct iomap_iter iter = {
+		.inode		= inode,
+		.pos		= pos | offset,
+		.len		= length,
+	};
+	ssize_t ret;
+
+	while ((ret = iomap_iter(&iter, ops)) > 0)
+		iter.processed = iomap_fsverity_write_iter(&iter, buf);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(iomap_fsverity_write);
+
+
 #else
 # define iomap_fsverity_read_bio_alloc(...)	(NULL)
 # define iomap_fsverity_init_bioset(...)	(-EOPNOTSUPP)
 #endif /* CONFIG_FS_VERITY */
 
 static struct bio *iomap_read_bio_alloc(struct inode *inode,
-		struct block_device *bdev, int nr_vecs, gfp_t gfp)
+		const struct iomap *iomap, int nr_vecs, gfp_t gfp)
 {
 	struct bio *bio;
+	struct block_device *bdev = iomap->bdev;
 
-	if (fsverity_active(inode))
+	/* We don't want to verify content of Merkle tree itself */
+	if (fsverity_active(inode) && !(iomap->flags & IOMAP_F_BEYOND_EOF))
 		return iomap_fsverity_read_bio_alloc(inode, bdev, nr_vecs, gfp);
 
 	bio = bio_alloc(bdev, nr_vecs, REQ_OP_READ, gfp);
@@ -488,10 +596,6 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 	loff_t orig_pos = pos;
 	size_t poff, plen;
 	sector_t sector;
-
-	/* Fail reads from broken fsverity files immediately. */
-	if (IS_VERITY(iter->inode) && !fsverity_active(iter->inode))
-		return -EIO;
 
 	if (iomap->type == IOMAP_INLINE)
 		return iomap_read_inline_data(iter, folio);
@@ -534,7 +638,7 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		if (ctx->rac) /* same as readahead_gfp_mask */
 			gfp |= __GFP_NORETRY | __GFP_NOWARN;
 
-		ctx->bio = iomap_read_bio_alloc(iter->inode, iomap->bdev,
+		ctx->bio = iomap_read_bio_alloc(iter->inode, iomap,
 				bio_max_segs(DIV_ROUND_UP(length, PAGE_SIZE)),
 				gfp);
 
@@ -545,7 +649,7 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		 */
 		if (!ctx->bio) {
 			ctx->bio = iomap_read_bio_alloc(iter->inode,
-					iomap->bdev, 1, orig_gfp);
+					iomap, 1, orig_gfp);
 		}
 		if (ctx->rac)
 			ctx->bio->bi_opf |= REQ_RAHEAD;
@@ -1018,13 +1122,14 @@ static bool iomap_write_end(struct iomap_iter *iter, loff_t pos, size_t len,
 	 * preferably after I/O completion so that no stale data is exposed.
 	 * Only once that's done can we unlock and release the folio.
 	 */
-	if (pos + written > old_size) {
+	if (pos + written > old_size &&
+	    !(iter->iomap.flags & IOMAP_F_BEYOND_EOF)) {
 		i_size_write(iter->inode, pos + written);
 		iter->iomap.flags |= IOMAP_F_SIZE_CHANGED;
 	}
 	__iomap_put_folio(iter, pos, written, folio);
 
-	if (old_size < pos)
+	if (old_size < pos && !(iter->iomap.flags & IOMAP_F_BEYOND_EOF))
 		pagecache_isize_extended(iter->inode, old_size, pos);
 
 	return written == copied;
@@ -2026,7 +2131,8 @@ static int iomap_writepage_map(struct iomap_writepage_ctx *wpc,
 
 	trace_iomap_writepage(inode, pos, folio_size(folio));
 
-	if (!iomap_writepage_handle_eof(folio, inode, &end_pos)) {
+	if (!iomap_writepage_handle_eof(folio, inode, &end_pos) &&
+			!(wpc->iomap.flags & IOMAP_F_BEYOND_EOF)) {
 		folio_unlock(folio);
 		return 0;
 	}
