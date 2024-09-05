@@ -9,6 +9,7 @@
 
 #include <crypto/hash.h>
 #include <linux/bio.h>
+#include <linux/pagemap.h>
 
 /*
  * Returns true if the hash block with index @hblock_idx in the tree, located in
