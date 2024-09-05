@@ -11,6 +11,7 @@
 #include <linux/mount.h>
 #include <linux/sched/signal.h>
 #include <linux/uaccess.h>
+#include <linux/pagemap.h>
 
 struct block_buffer {
 	u32 filled;
@@ -373,6 +374,10 @@ int fsverity_ioctl_enable(struct file *filp, const void __user *uarg)
 
 	if (!S_ISREG(inode->i_mode))
 		return -EINVAL;
+
+	err = filemap_write_and_wait(inode->i_mapping);
+	if (err)
+		return err;
 
 	err = mnt_want_write_file(filp);
 	if (err) /* -EROFS */
