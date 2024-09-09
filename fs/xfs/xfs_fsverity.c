@@ -24,6 +24,7 @@
 #include "xfs_iomap.h"
 #include "xfs_bmap.h"
 #include "xfs_health.h"
+#include "xfs_format.h"
 #include <linux/fsverity.h>
 
 /*
@@ -50,7 +51,7 @@ xfs_fsverity_init_vdesc_args(
  * Initialize an args structure to load or store a merkle tree block.
  * Caller must ensure @args is zeroed except for value and valuelen.
  */
-static inline void
+inline void
 xfs_fsverity_init_merkle_args(
 	struct xfs_inode	*ip,
 	struct xfs_merkle_key	*key,
@@ -236,6 +237,10 @@ xfs_fsverity_end_enable(
 	if (error)
 		goto out;
 
+	error = filemap_write_and_wait(inode->i_mapping);
+	if (error)
+		goto out;
+
 	/* Set fsverity inode flag */
 	error = xfs_trans_alloc_inode(ip, &M_RES(mp)->tr_ichange,
 			0, 0, false, &tp);
@@ -285,15 +290,15 @@ xfs_fsverity_read_iomap_begin(
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	struct xfs_merkle_key	name;
-	unsigned int		block_size;
 	struct xfs_da_args	args;
 	int			error;
-	int			mblocks_count;
 	struct xfs_bmbt_irec	map[1];
-	int			nmap;
+	int			nmap = 1;
+	int			seq;
+	unsigned int		lockmode = XFS_ILOCK_SHARED;
+	int			ret;
 
-	fsverity_merkle_tree_geometry(inode, &block_size, NULL);
-	mblocks_count = length / block_size;
+	pos = pos & XFS_FSVERITY_MTREE_MASK;
 
 	if (xfs_is_shutdown(mp))
 		return -EIO;
@@ -306,11 +311,24 @@ xfs_fsverity_read_iomap_begin(
 	if (error)
 		return error;
 
+	if (xfs_need_iread_extents(&ip->i_af))
+		lockmode = XFS_ILOCK_EXCL;
+	xfs_ilock(ip, lockmode);
 	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args.rmtblkno,
 			       args.rmtblkcnt, map, &nmap,
 			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, lockmode);
+	if (error)
+		return error;
 
-	return xfs_bmbt_to_iomap(ip, iomap, map, flags, 0, 0);
+	map[0].br_startoff = XFS_B_TO_FSB(mp, pos | XFS_FSVERITY_MTREE_OFFSET);
+
+	seq = xfs_iomap_inode_sequence(ip, IOMAP_F_XATTR);
+	trace_xfs_iomap_found(ip, pos, length, XFS_ATTR_FORK, map);
+	ret = xfs_bmbt_to_iomap(ip, iomap, map, flags, IOMAP_F_XATTR, seq);
+
+	iomap->flags |= IOMAP_F_FSVERITY;
+	return ret;
 }
 
 const struct iomap_ops xfs_fsverity_read_iomap_ops = {
@@ -328,43 +346,60 @@ xfs_fsverity_write_iomap_begin(
 {
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
-	unsigned int		block_size;
-	struct xfs_da_args	args;
-	unsigned		lockmode;
-	int			seq;
 	int			error;
-	struct xfs_bmbt_irec	map[1];
 	int			nmap = 1;
+	int			seq;
+	struct xfs_bmbt_irec	imap[1];
+	struct xfs_da_args	args;
+	struct xfs_merkle_key	name;
+	loff_t			xattr_offset;
+	loff_t			xattr_name;
+	unsigned int		xattr_size;
+	unsigned int		xattr_size_log;
 
 	if (xfs_is_shutdown(mp))
 		return -EIO;
 
-	fsverity_merkle_tree_geometry(inode, &block_size, NULL);
-	args.valuelen = block_size;
-	/* We mimic UNWRITTEN state here over iomap write */
+	pos = (pos & XFS_FSVERITY_MTREE_MASK);
+
+	/* We always allocate one xattr block, as this block will be used by
+	 * iomap. Even for smallest Merkle trees */
+	xattr_size = mp->m_attr_geo->blksize;
+	xattr_size_log = mp->m_attr_geo->blklog;
+	/* Offset into xattr block. One block can have multiple merkle tree
+	 * blocks */
+	xattr_offset = (pos & ((1 << xattr_size_log) - 1));
+	xattr_name = pos & ~(xattr_size - 1);
+
+	xfs_fsverity_init_merkle_args(ip, &name, xattr_name, &args);
+	args.valuelen = xattr_size;
 	args.attr_filter |= XFS_ATTR_INCOMPLETE;
 
-	/* TODO                     check vvvvvvvvvvvv */
 	error = xfs_attr_set(&args, XFS_ATTRUPDATE_UPSERT, false);
 	if (error)
 		return error;
 
-	/* TODO check FSB_TO_DADDR/FSB_TO_BB here and in read */
-	/* TODO probably I need to think about all those offsets conversions */
+	ASSERT(args->dp->i_af.if_format != XFS_DINODE_FMT_LOCAL);
+	xfs_ilock(ip, XFS_ILOCK_SHARED);
 	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args.rmtblkno,
-			       args.rmtblkcnt, map, &nmap,
+			       args.rmtblkcnt, imap, &nmap,
 			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, XFS_ILOCK_SHARED);
 	if (error)
 		return error;
 
-	/* TODO I probably need locking here */
-	lockmode = xfs_ilock_attr_map_shared(ip);
+	/* Instead of xattr extent offset, which will be over data, we need
+	 * merkle tree offset in page cache */
+	imap[0].br_startoff = XFS_B_TO_FSBT(mp, pos | XFS_FSVERITY_MTREE_OFFSET);
+
 	seq = xfs_iomap_inode_sequence(ip, IOMAP_F_XATTR);
-	xfs_iunlock(ip, lockmode);
+	xfs_bmbt_to_iomap(ip, iomap, imap, flags, IOMAP_F_XATTR, seq);
 
-	if (error)
-		return error;
-	return xfs_bmbt_to_iomap(ip, iomap, map, flags, IOMAP_F_XATTR, seq);
+	/* Merkle tree blocks could be differnt size than fsblocks */
+	iomap->length = length;
+	iomap->offset += xattr_offset;
+
+	return 0;
 }
 
 int
@@ -380,10 +415,8 @@ xfs_fsverity_end_ioend(
 	args.attr_filter &= ~XFS_ATTR_INCOMPLETE;
 
 	/* TODO calculate and save data CRC */
-	/* TODO no buffer, no header */
 
-	/* TODO                     check vvvvvvvvvvvv */
-	return xfs_attr_set(&args, XFS_ATTRUPDATE_UPSERT, false);
+	return xfs_attr_set(&args, XFS_ATTRUPDATE_REPLACE, false);
 }
 
 const struct iomap_ops xfs_fsverity_write_iomap_ops = {
@@ -400,12 +433,22 @@ xfs_fsverity_read_merkle(
 	struct folio	*folio;
 	unsigned int	block_size;
 	u64		tree_size;
-	fsverity_merkle_tree_geometry(inode, &block_size, &tree_size);
+	int		error;
+	u8		log_blocksize;
+	error = fsverity_merkle_tree_geometry(inode, &log_blocksize, &block_size,
+				      &tree_size);
+	if (error)
+		return ERR_PTR(error);
 
-	folio = iomap_fsverity_read(inode, index, block_size,
-			&xfs_fsverity_read_iomap_ops);
-	if (IS_ERR(folio))
-		return folio_page(folio, 0);
+	folio = iomap_fsverity_read(inode, index << log_blocksize, block_size,
+			XFS_FSVERITY_MTREE_OFFSET, &xfs_fsverity_read_iomap_ops);
+
+	/* Wait for buffered read to finish */
+	error = folio_wait_locked_killable(folio);
+	if (error) {
+		folio_set_error(folio);
+		return ERR_PTR(error);
+	}
 
 	return folio_page(folio, 0);
 }
@@ -418,16 +461,9 @@ xfs_fsverity_write_merkle(
 	u64		pos,
 	unsigned int	size)
 {
-	unsigned int	block_size;
-	u64		tree_size;
-	pgoff_t		offset;
-	fsverity_merkle_tree_geometry(inode, &block_size, &tree_size);
-
-	/* TODO better division? */
-	offset = pos >> ilog2(block_size);
-
-	return iomap_fsverity_write(inode, buf, offset, size,
-			&xfs_fsverity_write_iomap_ops);
+	return iomap_fsverity_write(inode, buf, pos, size,
+				    XFS_FSVERITY_MTREE_OFFSET,
+				    &xfs_fsverity_write_iomap_ops);
 }
 
 static void

@@ -342,6 +342,7 @@ xfs_attr_rmtval_copyin(
 	struct xfs_mount *mp,
 	struct xfs_buf	*bp,
 	xfs_ino_t	ino,
+	unsigned int    attrns,
 	unsigned int	*offset,
 	unsigned int	*valuelen,
 	uint8_t		**src)
@@ -361,7 +362,10 @@ xfs_attr_rmtval_copyin(
 		hdr_size = xfs_attr3_rmt_hdr_set(mp, dst, ino, *offset,
 						 byte_cnt, bno);
 
-		memcpy(dst + hdr_size, *src, byte_cnt);
+		if (!(attrns & XFS_ATTR_VERITY))
+			memcpy(dst + hdr_size, *src, byte_cnt);
+		else
+			memset(dst + hdr_size, 'A', byte_cnt);
 
 		/*
 		 * If this is the last block, zero the remainder of it.
@@ -381,7 +385,8 @@ xfs_attr_rmtval_copyin(
 
 		/* roll attribute data forwards */
 		*valuelen -= byte_cnt;
-		*src += byte_cnt;
+		if (!(attrns & XFS_ATTR_VERITY))
+			*src += byte_cnt;
 		*offset += byte_cnt;
 	}
 }
@@ -536,8 +541,8 @@ xfs_attr_rmtval_set_value(
 			return error;
 		bp->b_ops = &xfs_attr3_rmt_buf_ops;
 
-		xfs_attr_rmtval_copyin(mp, bp, args->owner, &offset, &valuelen,
-				&src);
+		xfs_attr_rmtval_copyin(mp, bp, args->owner, args->attr_filter,
+				&offset, &valuelen, &src);
 
 		error = xfs_bwrite(bp);	/* GROT: NOTE: synchronous write */
 		xfs_buf_relse(bp);
