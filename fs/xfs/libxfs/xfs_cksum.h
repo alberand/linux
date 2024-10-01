@@ -79,4 +79,16 @@ xfs_verify_cksum(char *buffer, size_t length, unsigned long cksum_offset)
 	return *(__le32 *)(buffer + cksum_offset) == xfs_end_cksum(crc);
 }
 
+/*
+ * Helper to calculate the checksum of a buffer which is outside of the buffer
+ */
+static inline uint32_t
+xfs_calc_cksum(char *buffer, size_t length, uint32_t *dst)
+{
+	uint32_t crc = crc32c(XFS_CRC_SEED, buffer, length);
+	if (dst)
+		*dst = crc;
+	return crc;
+}
+
 #endif /* _XFS_CKSUM_H */
