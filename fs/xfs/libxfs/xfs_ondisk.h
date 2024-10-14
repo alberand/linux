@@ -96,10 +96,11 @@ xfs_check_ondisk_structs(void)
 	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_local, valuelen,	0);
 	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_local, namelen,	2);
 	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_local, nameval,	3);
-	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, valueblk,	0);
-	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, valuelen,	4);
-	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, namelen,	8);
-	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, name,	9);
+	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, crc,		0);
+	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, valueblk,	8);
+	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, valuelen,	12);
+	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, namelen,	16);
+	XFS_CHECK_OFFSET(struct xfs_attr_leaf_name_remote, name,	17);
 	XFS_CHECK_STRUCT_SIZE(struct xfs_attr_leafblock,		32);
 	XFS_CHECK_STRUCT_SIZE(struct xfs_attr_sf_hdr,		4);
 	XFS_CHECK_OFFSET(struct xfs_attr_sf_hdr, totsize,	0);

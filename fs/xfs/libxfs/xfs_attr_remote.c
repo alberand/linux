@@ -62,13 +62,6 @@ xfs_attr3_rmt_blocks(
 	struct xfs_mount	*mp,
 	unsigned int		attrlen)
 {
-	/*
-	 * Each contiguous block has a header, so it is not just a simple
-	 * attribute length to FSB conversion.
-	 */
-	if (xfs_has_crc(mp))
-		return howmany(attrlen, xfs_attr3_rmt_buf_space(mp));
-
 	return XFS_B_TO_FSB(mp, attrlen);
 }
 
@@ -467,11 +460,6 @@ xfs_attr_rmt_find_hole(
 	unsigned int		blkcnt;
 	xfs_fileoff_t		lfileoff = 0;
 
-	/*
-	 * Because CRC enable attributes have headers, we can't just do a
-	 * straight byte to FSB conversion and have to take the header space
-	 * into account.
-	 */
 	blkcnt = xfs_attr3_rmt_blocks(mp, args->rmtvaluelen);
 	error = xfs_bmap_first_unused(args->trans, args->dp, blkcnt, &lfileoff,
 						   XFS_ATTR_FORK);

@@ -85,6 +85,7 @@ typedef struct xfs_da_args {
 	int		rmtblkcnt2;	/* remote attr value block count */
 	int		rmtvaluelen2;	/* remote attr value length in bytes */
 	enum xfs_dacmp	cmpresult;	/* name compare result for lookups */
+	loff_t		region_offset;	/* offset of the iomapped attr region */
 } xfs_da_args_t;
 
 /*

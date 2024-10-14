@@ -27,6 +27,7 @@
 #include "xfs_attr_item.h"
 #include "xfs_xattr.h"
 #include "xfs_parent.h"
+#include "xfs_iomap.h"
 
 struct kmem_cache		*xfs_attr_intent_cache;
 
@@ -345,6 +346,175 @@ xfs_attr_set_resv(
 }
 
 /*
+ * Find attribute specified in args and return iomap pointing to the attribute
+ * data
+ */
+int
+xfs_attr_read_iomap(
+	struct xfs_da_args	*args,
+	struct iomap		*iomap)
+{
+	struct xfs_inode	*ip = args->dp;
+	struct xfs_mount	*mp = ip->i_mount;
+	int			error;
+	struct xfs_bmbt_irec	map[1];
+	int			nmap = 1;
+	int			seq;
+	unsigned int		lockmode = XFS_ILOCK_SHARED;
+	int			ret;
+	uint64_t		pos = xfs_attr_get_position(args);
+
+	ASSERT(!args->region_offset);
+
+	if (xfs_is_shutdown(mp))
+		return -EIO;
+
+	/* We just need to find the attribute and block it's pointing
+	 * to. The reading of data would be done by iomap */
+	args->valuelen = 0;
+	error = xfs_attr_get(args);
+	if (error)
+		return error;
+
+	if (xfs_need_iread_extents(&ip->i_af))
+		lockmode = XFS_ILOCK_EXCL;
+	xfs_ilock(ip, lockmode);
+	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args->rmtblkno,
+			       args->rmtblkcnt, map, &nmap,
+			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, lockmode);
+	if (error)
+		return error;
+
+	map[0].br_startoff = XFS_B_TO_FSB(mp, pos | args->region_offset);
+
+	seq = xfs_iomap_inode_sequence(ip, IOMAP_F_XATTR);
+	trace_xfs_iomap_found(ip, pos, args->valuelen, XFS_ATTR_FORK, map);
+	ret = xfs_bmbt_to_iomap(ip, iomap, map, 0, IOMAP_F_XATTR, seq);
+	/* Attributes are at args->region_offset in cache, beyond EOF of the
+	 * file */
+	iomap->flags |= IOMAP_F_BEYOND_EOF;
+
+	return ret;
+}
+
+int
+xfs_attr_read_end_io(
+		struct xfs_da_args		*args)
+{
+	struct xfs_inode			*ip = args->dp;
+	struct xfs_attr_leafblock		*leaf;
+	struct xfs_attr_leaf_entry		*entry;
+	struct xfs_attr_leaf_name_remote	*name_rmt;
+	struct xfs_buf				*bp;
+	struct xfs_mount			*mp = args->dp->i_mount;
+	uint32_t				crc;
+	int					error;
+	unsigned int				whichcrc;
+
+	xfs_ilock(ip, XFS_ILOCK_SHARED);
+
+	if (!xfs_inode_hasattr(args->dp)) {
+		error = -ENOATTR;
+		goto out_unlock;
+	}
+
+	error = xfs_iread_extents(args->trans, args->dp, XFS_ATTR_FORK);
+	if (error)
+		goto out_unlock;
+
+	error = xfs_attr3_leaf_read(args->trans, args->dp, args->owner,
+			args->blkno, &bp);
+	if (error)
+		goto out_unlock;
+
+	leaf = bp->b_addr;
+	entry = &xfs_attr3_leaf_entryp(leaf)[args->index];
+
+	whichcrc = (entry->flags & XFS_ATTR_RMCRC_SEL) != 0;
+	name_rmt = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf,
+					      args->index);
+
+	xfs_calc_cksum(args->value, args->valuelen, &crc);
+	error = name_rmt->crc[whichcrc] != crc;
+	if (error) {
+		if (name_rmt->crc[~whichcrc & 1] != crc) {
+			error = -EFSCORRUPTED;
+			goto out_buf_relse;
+		} else {
+			error = -EFSBADCRC;
+			goto out_buf_relse;
+		}
+	}
+
+out_buf_relse:
+	xfs_buf_relse(bp);
+out_unlock:
+	xfs_iunlock(args->dp, XFS_ILOCK_SHARED);
+	return error;
+}
+
+/*
+ * Create an attribute described in args and return iomap pointing to the extent
+ * where attribute data has to be written.
+ *
+ * Created attribute has XFS_ATTR_INCOMPLETE set, and doesn't have any data CRC.
+ * Therefore, when IO is complete xfs_attr_write_end_ioend() need to be called.
+ */
+int
+xfs_attr_write_iomap(
+	struct xfs_da_args	*args,
+	struct iomap		*iomap)
+{
+	struct xfs_inode	*ip = args->dp;
+	struct xfs_mount	*mp = ip->i_mount;
+	int			error;
+	int			nmap = 1;
+	int			seq;
+	struct xfs_bmbt_irec	imap[1];
+	uint64_t		pos = xfs_attr_get_position(args);
+	unsigned int		blksize = mp->m_attr_geo->blksize;
+
+	ASSERT(!args->region_offset);
+
+	if (xfs_is_shutdown(mp))
+		return -EIO;
+
+	/* We just want to allocate blocks without copying any data there */
+	args->op_flags |= XFS_DA_OP_EMPTY;
+	args->valuelen = round_up(min_t(int, args->valuelen, blksize), blksize);
+
+	error = xfs_attr_set(args, XFS_ATTRUPDATE_UPSERT, false);
+	if (error)
+		return error;
+
+	ASSERT(args->dp->i_af.if_format != XFS_DINODE_FMT_LOCAL);
+	xfs_ilock(ip, XFS_ILOCK_SHARED);
+	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args->rmtblkno,
+			       args->rmtblkcnt, imap, &nmap,
+			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, XFS_ILOCK_SHARED);
+	if (error)
+		return error;
+
+	/* Instead of xattr extent offset, which will be over data, we need
+	 * merkle tree offset in page cache */
+	imap[0].br_startoff = XFS_B_TO_FSBT(mp, pos | args->region_offset);
+
+	seq = xfs_iomap_inode_sequence(ip, IOMAP_F_XATTR);
+	xfs_bmbt_to_iomap(ip, iomap, imap, 0, IOMAP_F_XATTR, seq);
+
+	return 0;
+}
+
+int
+xfs_attr_write_end_ioend(
+		struct xfs_da_args	*args)
+{
+	return xfs_attr_set(args, XFS_ATTRUPDATE_FLAGS, false);
+}
+
+/*
  * Add an attr to a shortform fork. If there is no space,
  * xfs_attr_shortform_addname() will convert to leaf format and return -ENOSPC.
  * to use.
@@ -642,11 +812,15 @@ xfs_attr_rmtval_alloc(
 			goto out;
 	}
 
-	if (!(args->op_flags & XFS_DA_OP_EMPTY)) {
+	if (args->op_flags & XFS_DA_OP_EMPTY) {
+		/* Set XFS_ATTR_INCOMLETE flag as attribute doesn't have a value
+		 * yet (which should be written by iomap). */
+		error = xfs_attr3_leaf_setflag(args);
+	} else {
 		error = xfs_attr_rmtval_set_value(args);
-		if (error)
-			return error;
 	}
+	if (error)
+		return error;
 
 	attr->xattri_dela_state = xfs_attr_complete_op(attr,
 						++attr->xattri_dela_state);
@@ -1612,4 +1786,13 @@ xfs_attr_intent_destroy_cache(void)
 {
 	kmem_cache_destroy(xfs_attr_intent_cache);
 	xfs_attr_intent_cache = NULL;
+}
+
+/* Retrieve attribute position from the attr data */
+uint64_t
+xfs_attr_get_position(
+	struct xfs_da_args	*args)
+{
+	ASSERT(args->namelen == sizeof(uint64_t));
+	return be64_to_cpu(*(uint64_t*)args->name);
 }
