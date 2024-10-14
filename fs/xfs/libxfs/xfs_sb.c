@@ -169,6 +169,8 @@ xfs_sb_version_to_features(
 		features |= XFS_FEAT_INOBTCNT;
 	if (sbp->sb_features_ro_compat & XFS_SB_FEAT_RO_COMPAT_VERITY)
 		features |= XFS_FEAT_VERITY;
+	if (sbp->sb_features_ro_compat & XFS_SB_FEAT_RO_COMPAT_DXATTR)
+		features |= XFS_FEAT_DXATTR;
 	if (sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_FTYPE)
 		features |= XFS_FEAT_FTYPE;
 	if (sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_SPINODES)

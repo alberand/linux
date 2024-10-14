@@ -319,6 +319,7 @@ typedef struct xfs_mount {
 #define XFS_FEAT_RTGROUPS	(1ULL << 29)	/* realtime groups */
 #define XFS_FEAT_RTSUPER	(1ULL << 30)	/* realtime super */
 #define XFS_FEAT_VERITY		(1ULL << 31)	/* fs-verity */
+#define XFS_FEAT_DXATTR		(1ULL << 32)	/* Directly mapped xattrs */
 
 /* Mount features */
 #define XFS_FEAT_NOATTR2	(1ULL << 48)	/* disable attr2 creation */

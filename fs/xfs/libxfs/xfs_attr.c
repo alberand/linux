@@ -355,6 +355,53 @@ xfs_attr_set_resv(
 	return ret;
 }
 
+int
+xfs_attr_set_iomapped(
+	struct xfs_da_args	*args,
+	bool			rsvd,
+	struct xfs_bmbt_irec	*imap)
+{
+	struct xfs_inode	*ip = args->dp;
+	int			nmap = 1;
+	int			error;
+
+	error = xfs_attr_set(args, XFS_ATTRUPDATE_CREATE, false);
+	if (error)
+		return error;
+
+	ASSERT(args->dp->i_af.if_format != XFS_DINODE_FMT_LOCAL);
+	xfs_ilock(ip, XFS_ILOCK_SHARED);
+	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args->rmtblkno,
+			       args->rmtblkcnt, imap, &nmap,
+			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, XFS_ILOCK_SHARED);
+	return error;
+}
+
+int
+xfs_attr_set_end_ioend(
+		struct xfs_da_args	*args,
+		struct iomap_ioend	*ioend)
+{
+	struct bio		bio = ioend->io_bio;
+	struct folio_iter	fi;
+	loff_t			offset = ioend->io_offset;
+	void			*addr;
+	unsigned int		whichcrc = args->attr_filter & XFS_ATTR_RMCRC_SEL;
+	unsigned int		size;
+
+	args->attr_filter ^= XFS_ATTR_RMCRC_SEL;
+
+	bio_for_each_folio_all(fi, &bio) {
+		size = min_t(unsigned int, PAGE_SIZE, fi.length);
+		addr = kmap_local_folio(fi.folio, 0);
+		xfs_calc_cksum(addr, size, args->crc[whichcrc]);
+	}
+	
+
+	return xfs_attr_set(args, XFS_ATTRUPDATE_REPLACE, false);
+}
+
 /*
  * Add an attr to a shortform fork. If there is no space,
  * xfs_attr_shortform_addname() will convert to leaf format and return -ENOSPC.

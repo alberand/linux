@@ -6,6 +6,8 @@
 #ifndef __XFS_ATTR_H__
 #define	__XFS_ATTR_H__
 
+#include <linux/iomap.h>
+
 struct xfs_inode;
 struct xfs_da_args;
 struct xfs_attr_list_context;
@@ -566,6 +568,9 @@ bool xfs_attr_namecheck(unsigned int attr_flags, const void *name,
 		size_t length);
 int xfs_attr_calc_size(struct xfs_da_args *args, int *local);
 struct xfs_trans_res xfs_attr_set_resv(const struct xfs_da_args *args);
+int xfs_attr_set_iomapped(struct xfs_da_args *args, bool rsvd,
+		struct xfs_bmbt_irec *imap);
+int xfs_attr_set_end_ioend(struct xfs_da_args *args, struct iomap_ioend *ioend);
 
 /*
  * Check to see if the attr should be upgraded from non-existent or shortform to
