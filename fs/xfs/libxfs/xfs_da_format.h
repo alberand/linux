@@ -781,7 +781,13 @@ xfs_attr3_leaf_name_remote(
 		xfs_attr_leafblock_t	*leafp,
 		int			idx)
 {
-	return (xfs_attr_leaf_name_remote_t *)xfs_attr3_leaf_name(leafp, idx);
+	char *leaf = xfs_attr3_leaf_name(leafp, idx);
+	/* Overlap xfs_attr_leaf_name_remote_t with anything which is before.
+	 * The overlap is created by ->crc[2] and is not used for filesystem
+	 * without DXATTR. */
+	if (!xfs_sb_has_incompat_feature(sb, XFS_SB_FEAT_INCOMPAT_DXATTR))
+		return (xfs_attr_leaf_name_remote_t *)(leaf - 2*sizeof(__be32));
+	return (xfs_attr_leaf_name_remote_t *)leaf;
 }
 
 static inline xfs_attr_leaf_name_local_t *
