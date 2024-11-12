@@ -84,7 +84,8 @@ xchk_xattr_walk_leaf_entries(
 		} else {
 			struct xfs_attr_leaf_name_remote	*name_rmt;
 
-			name_rmt = xfs_attr3_leaf_name_remote(leaf, i);
+			name_rmt = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf,
+							      i);
 			name = name_rmt->name;
 			namelen = name_rmt->namelen;
 			value = NULL;

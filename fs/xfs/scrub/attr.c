@@ -361,7 +361,7 @@ xchk_xattr_entry(
 		if (lentry->namelen == 0)
 			xchk_da_set_corrupt(ds, level);
 	} else {
-		rentry = xfs_attr3_leaf_name_remote(leaf, idx);
+		rentry = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf, idx);
 		namesize = xfs_attr_leaf_entsize_remote(rentry->namelen);
 		name_end = (char *)rentry + namesize;
 		if (rentry->namelen == 0 || rentry->valueblk == 0)

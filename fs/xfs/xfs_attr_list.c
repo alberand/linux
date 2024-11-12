@@ -506,7 +506,8 @@ xfs_attr3_leaf_list_int(
 		} else {
 			xfs_attr_leaf_name_remote_t *name_rmt;
 
-			name_rmt = xfs_attr3_leaf_name_remote(leaf, i);
+			name_rmt = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf,
+							      i);
 			name = name_rmt->name;
 			namelen = name_rmt->namelen;
 			value = NULL;

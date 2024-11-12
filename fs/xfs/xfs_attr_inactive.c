@@ -106,7 +106,7 @@ xfs_attr3_leaf_inactive(
 		if (!entry->nameidx || (entry->flags & XFS_ATTR_LOCAL))
 			continue;
 
-		name_rmt = xfs_attr3_leaf_name_remote(leaf, i);
+		name_rmt = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf, i);
 		if (!name_rmt->valueblk)
 			continue;
 

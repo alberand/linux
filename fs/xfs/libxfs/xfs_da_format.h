@@ -773,7 +773,10 @@ xfs_attr3_leaf_name(xfs_attr_leafblock_t *leafp, int idx)
 }
 
 static inline xfs_attr_leaf_name_remote_t *
-xfs_attr3_leaf_name_remote(xfs_attr_leafblock_t *leafp, int idx)
+xfs_attr3_leaf_name_remote(
+		struct xfs_sb		*sb,
+		xfs_attr_leafblock_t	*leafp,
+		int			idx)
 {
 	return (xfs_attr_leaf_name_remote_t *)xfs_attr3_leaf_name(leafp, idx);
 }

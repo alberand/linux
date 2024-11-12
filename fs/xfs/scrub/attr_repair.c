@@ -436,7 +436,8 @@ xrep_xattr_recover_leaf(
 			error = xrep_xattr_salvage_local_attr(rx, ent, nameidx,
 					buf_end, lentry);
 		} else {
-			rentry = xfs_attr3_leaf_name_remote(leaf, i);
+			rentry = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf,
+							    i);
 			error = xrep_xattr_salvage_remote_attr(rx, ent, nameidx,
 					buf_end, rentry, i, bp);
 		}
