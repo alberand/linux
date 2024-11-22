@@ -97,6 +97,7 @@ typedef struct xfs_da_args {
 #define XFS_DA_OP_CILOOKUP	(1u << 4) /* lookup returns CI name if found */
 #define XFS_DA_OP_RECOVERY	(1u << 5) /* Log recovery operation */
 #define XFS_DA_OP_LOGGED	(1u << 6) /* Use intent items to track op */
+#define XFS_DA_OP_EMPTY		(1u << 7) /* Don't copy any data but alloc blks */
 
 #define XFS_DA_OP_FLAGS \
 	{ XFS_DA_OP_JUSTCHECK,	"JUSTCHECK" }, \
@@ -105,7 +106,8 @@ typedef struct xfs_da_args {
 	{ XFS_DA_OP_OKNOENT,	"OKNOENT" }, \
 	{ XFS_DA_OP_CILOOKUP,	"CILOOKUP" }, \
 	{ XFS_DA_OP_RECOVERY,	"RECOVERY" }, \
-	{ XFS_DA_OP_LOGGED,	"LOGGED" }
+	{ XFS_DA_OP_LOGGED,	"LOGGED" }, \
+	{ XFS_DA_OP_EMPTY,	"EMPTY" }
 
 /*
  * Storage for holding state during Btree searches and split/join ops.

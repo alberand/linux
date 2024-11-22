@@ -642,9 +642,11 @@ xfs_attr_rmtval_alloc(
 			goto out;
 	}
 
-	error = xfs_attr_rmtval_set_value(args);
-	if (error)
-		return error;
+	if (!(args->op_flags & XFS_DA_OP_EMPTY)) {
+		error = xfs_attr_rmtval_set_value(args);
+		if (error)
+			return error;
+	}
 
 	attr->xattri_dela_state = xfs_attr_complete_op(attr,
 						++attr->xattri_dela_state);
