@@ -6,7 +6,7 @@
 # (If it is the integrated assembler, return 0 as the version, and
 # skip the version check.)
 
-set -e
+set -ex
 
 # Convert the version string x.y.z to a canonical 5 or 6-digit form.
 get_canonical_version()
@@ -45,7 +45,7 @@ orig_args="$@"
 # Get the first line of the --version output.
 IFS='
 '
-set -- $(LC_ALL=C "$@" -Wa,--version -c -x assembler-with-cpp /dev/null -o /dev/null 2>/dev/null)
+set -- $(LC_ALL=C "$@" -Wa,--version -c -x assembler-with-cpp /dev/null -o /dev/null)
 
 # Split the line on spaces.
 IFS=' '
