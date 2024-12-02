@@ -66,6 +66,7 @@ int	xfs_attr3_leaf_to_shortform(struct xfs_buf *bp,
 int	xfs_attr3_leaf_clearflag(struct xfs_da_args *args);
 int	xfs_attr3_leaf_setflag(struct xfs_da_args *args);
 int	xfs_attr3_leaf_flipflags(struct xfs_da_args *args);
+int	xfs_attr3_leaf_setcrc(struct xfs_da_args *args);
 
 /*
  * Routines used for growing the Btree.

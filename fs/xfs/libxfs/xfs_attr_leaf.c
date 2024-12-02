@@ -3035,3 +3035,53 @@ xfs_attr3_leaf_flipflags(
 
 	return 0;
 }
+
+/*
+ * Set CRC field of remote attribute
+ */
+int
+xfs_attr3_leaf_setcrc(
+	struct xfs_da_args			*args)
+{
+	struct xfs_attr_leafblock		*leaf;
+	struct xfs_attr_leaf_entry		*entry;
+	struct xfs_attr_leaf_name_remote	*name_rmt;
+	struct xfs_buf				*bp;
+	struct xfs_mount			*mp = args->dp->i_mount;
+	int					error;
+	unsigned int				whichcrc;
+	uint32_t				crc;
+
+	trace_xfs_attr_leaf_setcrc(args);
+
+	xfs_calc_cksum(args->value, args->valuelen, &crc);
+
+	/*
+	 * Set up the operation.
+	 */
+	error = xfs_attr3_leaf_read(args->trans, args->dp, args->owner,
+			args->blkno, &bp);
+	if (error)
+		return error;
+
+	leaf = bp->b_addr;
+	entry = &xfs_attr3_leaf_entryp(leaf)[args->index];
+	ASSERT((entry->flags & XFS_ATTR_INCOMPLETE) != 0);
+
+	whichcrc = (entry->flags & XFS_ATTR_RMCRC_SEL) == 0;
+	name_rmt = xfs_attr3_leaf_name_remote(&(mp->m_sb), leaf,
+					      args->index);
+	name_rmt->crc[whichcrc] = crc;
+	xfs_trans_log_buf(args->trans, bp,
+			XFS_DA_LOGRANGE(leaf, name_rmt, sizeof(*name_rmt)));
+
+	/* Flip the XFS_ATTR_RMCRC_SEL bit to point to the right/new CRC and
+	 * clear XFS_ATTR_INCOMPLETE bit as this is final point of directly
+	 * mapped attr data write flow */
+	entry->flags ^= XFS_ATTR_RMCRC_SEL;
+	entry->flags &= ~XFS_ATTR_INCOMPLETE;
+	xfs_trans_log_buf(args->trans, bp,
+			XFS_DA_LOGRANGE(leaf, entry, sizeof(*entry)));
+
+	return 0;
+}

@@ -2189,6 +2189,7 @@ DEFINE_ATTR_EVENT(xfs_attr_leaf_to_node);
 DEFINE_ATTR_EVENT(xfs_attr_leaf_rebalance);
 DEFINE_ATTR_EVENT(xfs_attr_leaf_unbalance);
 DEFINE_ATTR_EVENT(xfs_attr_leaf_toosmall);
+DEFINE_ATTR_EVENT(xfs_attr_leaf_setcrc);
 
 DEFINE_ATTR_EVENT(xfs_attr_node_addname);
 DEFINE_ATTR_EVENT(xfs_attr_node_get);
