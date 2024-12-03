@@ -1035,6 +1035,7 @@ struct xfs_icreate_log {
 #define XFS_ATTRI_OP_FLAGS_PPTR_SET	4	/* Set parent pointer */
 #define XFS_ATTRI_OP_FLAGS_PPTR_REMOVE	5	/* Remove parent pointer */
 #define XFS_ATTRI_OP_FLAGS_PPTR_REPLACE	6	/* Replace parent pointer */
+#define XFS_ATTRI_OP_FLAGS_FLAGS_UPDATE	7	/* Update attribute flags */
 #define XFS_ATTRI_OP_FLAGS_TYPE_MASK	0xFF	/* Flags type mask */
 
 /*

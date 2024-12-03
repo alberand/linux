@@ -96,6 +96,7 @@ struct __xfsstats {
 	uint32_t		xs_attr_get;
 	uint32_t		xs_attr_set;
 	uint32_t		xs_attr_remove;
+	uint32_t		xs_attr_flags;
 	uint32_t		xs_attr_list;
 	uint32_t		xs_iflush_count;
 	uint32_t		xs_icluster_flushcnt;

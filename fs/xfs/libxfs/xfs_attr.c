@@ -855,6 +855,13 @@ next_state:
 			attr->xattri_dela_state++;
 		break;
 
+	case XFS_DAS_LEAF_FLAGS_UPDATE:
+		error = xfs_attr3_leaf_setcrc(args);
+		if (error)
+			return error;
+		attr->xattri_dela_state = XFS_DAS_DONE;
+		break;
+
 	case XFS_DAS_LEAF_SET_RMT:
 	case XFS_DAS_NODE_SET_RMT:
 		error = xfs_attr_rmtval_find_space(attr);
@@ -1093,6 +1100,11 @@ xfs_attr_set(
 		tres = M_RES(mp)->tr_attrrm;
 		total = XFS_ATTRRM_SPACE_RES(mp);
 		break;
+	case XFS_ATTRUPDATE_FLAGS:
+		XFS_STATS_INC(mp, xs_attr_flags);
+		tres = M_RES(mp)->tr_attrrm;
+		total = XFS_ATTRRM_SPACE_RES(mp);
+		break;
 	}
 
 	/*
@@ -1119,6 +1131,11 @@ xfs_attr_set(
 			break;
 		}
 
+		if (op == XFS_ATTRUPDATE_FLAGS) {
+			xfs_attr_defer_add(args, XFS_ATTR_DEFER_FLAGS);
+			break;
+		}
+
 		/* Pure create fails if the attr already exists */
 		if (op == XFS_ATTRUPDATE_CREATE)
 			goto out_trans_cancel;
@@ -1126,7 +1143,7 @@ xfs_attr_set(
 		break;
 	case -ENOATTR:
 		/* Can't remove what isn't there. */
-		if (op == XFS_ATTRUPDATE_REMOVE)
+		if (op == XFS_ATTRUPDATE_REMOVE || op == XFS_ATTRUPDATE_FLAGS)
 			goto out_trans_cancel;
 
 		/* Pure replace fails if no existing attr to replace. */

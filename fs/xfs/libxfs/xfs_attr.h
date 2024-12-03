@@ -448,6 +448,7 @@ enum xfs_delattr_state {
 
 	XFS_DAS_LEAF_ADD,		/* Initial leaf add state */
 	XFS_DAS_LEAF_REMOVE,		/* Initial leaf replace/remove state */
+	XFS_DAS_LEAF_FLAGS_UPDATE,	/* Update leaf XFS_ATTR_* flags and CRC */
 
 	XFS_DAS_NODE_ADD,		/* Initial node add state */
 	XFS_DAS_NODE_REMOVE,		/* Initial node replace/remove state */
@@ -477,6 +478,7 @@ enum xfs_delattr_state {
 	{ XFS_DAS_SF_REMOVE,		"XFS_DAS_SF_REMOVE" }, \
 	{ XFS_DAS_LEAF_ADD,		"XFS_DAS_LEAF_ADD" }, \
 	{ XFS_DAS_LEAF_REMOVE,		"XFS_DAS_LEAF_REMOVE" }, \
+	{ XFS_DAS_LEAF_FLAGS_UPDATE,	"XFS_DAS_LEAF_FLAGS_UPDATE" }, \
 	{ XFS_DAS_NODE_ADD,		"XFS_DAS_NODE_ADD" }, \
 	{ XFS_DAS_NODE_REMOVE,		"XFS_DAS_NODE_REMOVE" }, \
 	{ XFS_DAS_LEAF_SET_RMT,		"XFS_DAS_LEAF_SET_RMT" }, \
@@ -556,6 +558,7 @@ enum xfs_attr_update {
 	XFS_ATTRUPDATE_UPSERT,	/* set value, replace any existing attr */
 	XFS_ATTRUPDATE_CREATE,	/* set value, fail if attr already exists */
 	XFS_ATTRUPDATE_REPLACE,	/* set value, fail if attr does not exist */
+	XFS_ATTRUPDATE_FLAGS,	/* update attribute flags and metadata */
 };
 
 int xfs_attr_set(struct xfs_da_args *args, enum xfs_attr_update op, bool rsvd);

@@ -57,6 +57,7 @@ enum xfs_attr_defer_op {
 	XFS_ATTR_DEFER_SET,
 	XFS_ATTR_DEFER_REMOVE,
 	XFS_ATTR_DEFER_REPLACE,
+	XFS_ATTR_DEFER_FLAGS,
 };
 
 void xfs_attr_defer_add(struct xfs_da_args *args, enum xfs_attr_defer_op op);

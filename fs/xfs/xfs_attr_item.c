@@ -908,6 +908,9 @@ xfs_attr_defer_add(
 		else
 			log_op = XFS_ATTRI_OP_FLAGS_REMOVE;
 		break;
+	case XFS_ATTR_DEFER_FLAGS:
+		log_op = XFS_ATTRI_OP_FLAGS_FLAGS_UPDATE;
+		break;
 	default:
 		ASSERT(0);
 		break;
@@ -930,6 +933,9 @@ xfs_attr_defer_add(
 	case XFS_ATTRI_OP_FLAGS_PPTR_REMOVE:
 	case XFS_ATTRI_OP_FLAGS_REMOVE:
 		new->xattri_dela_state = xfs_attr_init_remove_state(args);
+		break;
+	case XFS_ATTRI_OP_FLAGS_FLAGS_UPDATE:
+		new->xattri_dela_state = XFS_DAS_LEAF_FLAGS_UPDATE;
 		break;
 	}
 
