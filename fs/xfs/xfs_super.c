@@ -192,6 +192,8 @@ xfs_fs_show_options(
 			seq_puts(m, xfs_infop->str);
 	}
 
+	xfs_warn(mp, "Very important warning");
+
 	seq_printf(m, ",inode%d", xfs_has_small_inums(mp) ? 32 : 64);
 
 	if (xfs_has_allocsize(mp))
