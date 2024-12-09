@@ -1058,6 +1058,8 @@ xfs_attr_set(
 
 	ASSERT(!args->trans);
 
+	xfs_warn(mp, "Very important warning");
+
 	switch (op) {
 	case XFS_ATTRUPDATE_UPSERT:
 	case XFS_ATTRUPDATE_CREATE:
