@@ -1651,6 +1651,8 @@ iomap_ioend_can_merge(struct iomap_ioend *ioend, struct iomap_ioend *next)
 	 */
 	if (ioend->io_sector + (ioend->io_size >> 9) != next->io_sector)
 		return false;
+	if (ioend->io_flags & IOMAP_F_NO_MERGE)
+		return false;
 	return true;
 }
 
@@ -1781,6 +1783,8 @@ static bool iomap_can_add_to_ioend(struct iomap_writepage_ctx *wpc, loff_t pos)
 	 * folios in the ioend.
 	 */
 	if (wpc->nr_folios >= IOEND_BATCH_SIZE)
+		return false;
+	if (wpc->iomap.flags & IOMAP_F_NO_MERGE)
 		return false;
 	return true;
 }

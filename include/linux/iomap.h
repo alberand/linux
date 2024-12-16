@@ -87,6 +87,8 @@ struct vm_fault;
  * Flags from 0x1000 up are for file system specific usage:
  */
 #define IOMAP_F_PRIVATE		(1U << 12)
+/* No ioend merges for this operation */
+#define IOMAP_F_NO_MERGE	(1U << 13)
 
 
 /*
