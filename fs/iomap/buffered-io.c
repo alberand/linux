@@ -320,14 +320,6 @@ static void iomap_read_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
-struct iomap_readpage_ctx {
-	struct folio		*cur_folio;
-	bool			cur_folio_in_bio;
-	struct bio		*bio;
-	struct readahead_control *rac;
-	int			flags;
-};
-
 /**
  * iomap_read_inline_data - copy inline data into the page cache
  * @iter: iteration structure
@@ -461,28 +453,27 @@ static loff_t iomap_read_folio_iter(const struct iomap_iter *iter,
 	return done;
 }
 
-int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops)
+int iomap_read_folio_ctx(struct iomap_readpage_ctx *ctx,
+		const struct iomap_ops *ops)
 {
+	struct folio *folio = ctx->cur_folio;
 	struct iomap_iter iter = {
 		.inode		= folio->mapping->host,
 		.pos		= folio_pos(folio),
 		.len		= folio_size(folio),
-	};
-	struct iomap_readpage_ctx ctx = {
-		.cur_folio	= folio,
 	};
 	int ret;
 
 	trace_iomap_readpage(iter.inode, 1);
 
 	while ((ret = iomap_iter(&iter, ops)) > 0)
-		iter.processed = iomap_read_folio_iter(&iter, &ctx);
+		iter.processed = iomap_read_folio_iter(&iter, ctx);
 
-	if (ctx.bio) {
-		submit_bio(ctx.bio);
-		WARN_ON_ONCE(!ctx.cur_folio_in_bio);
+	if (ctx->bio) {
+		submit_bio(ctx->bio);
+		WARN_ON_ONCE(!ctx->cur_folio_in_bio);
 	} else {
-		WARN_ON_ONCE(ctx.cur_folio_in_bio);
+		WARN_ON_ONCE(ctx->cur_folio_in_bio);
 		folio_unlock(folio);
 	}
 
@@ -492,6 +483,16 @@ int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops)
 	 * should be cleaned up throughout the stack eventually.
 	 */
 	return 0;
+}
+EXPORT_SYMBOL_GPL(iomap_read_folio_ctx);
+
+int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops)
+{
+	struct iomap_readpage_ctx ctx = {
+		.cur_folio	= folio,
+	};
+
+	return iomap_read_folio_ctx(&ctx, ops);
 }
 EXPORT_SYMBOL_GPL(iomap_read_folio);
 
@@ -520,6 +521,30 @@ static loff_t iomap_readahead_iter(const struct iomap_iter *iter,
 	return done;
 }
 
+void iomap_readahead_ctx(struct iomap_readpage_ctx *ctx,
+		const struct iomap_ops *ops)
+{
+	struct readahead_control *rac = ctx->rac;
+	struct iomap_iter iter = {
+		.inode	= rac->mapping->host,
+		.pos	= readahead_pos(rac),
+		.len	= readahead_length(rac),
+	};
+
+	trace_iomap_readahead(rac->mapping->host, readahead_count(rac));
+
+	while (iomap_iter(&iter, ops) > 0)
+		iter.processed = iomap_readahead_iter(&iter, ctx);
+
+	if (ctx->bio)
+		submit_bio(ctx->bio);
+	if (ctx->cur_folio) {
+		if (!ctx->cur_folio_in_bio)
+			folio_unlock(ctx->cur_folio);
+	}
+}
+EXPORT_SYMBOL_GPL(iomap_readahead_ctx);
+
 /**
  * iomap_readahead - Attempt to read pages from a file.
  * @rac: Describes the pages to be read.
@@ -537,26 +562,11 @@ static loff_t iomap_readahead_iter(const struct iomap_iter *iter,
  */
 void iomap_readahead(struct readahead_control *rac, const struct iomap_ops *ops)
 {
-	struct iomap_iter iter = {
-		.inode	= rac->mapping->host,
-		.pos	= readahead_pos(rac),
-		.len	= readahead_length(rac),
-	};
 	struct iomap_readpage_ctx ctx = {
 		.rac	= rac,
 	};
 
-	trace_iomap_readahead(rac->mapping->host, readahead_count(rac));
-
-	while (iomap_iter(&iter, ops) > 0)
-		iter.processed = iomap_readahead_iter(&iter, &ctx);
-
-	if (ctx.bio)
-		submit_bio(ctx.bio);
-	if (ctx.cur_folio) {
-		if (!ctx.cur_folio_in_bio)
-			folio_unlock(ctx.cur_folio);
-	}
+	iomap_readahead_ctx(&ctx, ops);
 }
 EXPORT_SYMBOL_GPL(iomap_readahead);
 

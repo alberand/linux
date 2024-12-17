@@ -296,9 +296,21 @@ static inline bool iomap_want_unshare_iter(const struct iomap_iter *iter)
 		iter->srcmap.type == IOMAP_MAPPED;
 }
 
+struct iomap_readpage_ctx {
+	struct folio			*cur_folio;
+	bool				cur_folio_in_bio;
+	struct bio			*bio;
+	struct readahead_control	*rac;
+	int				flags;
+};
+
 ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *from,
 		const struct iomap_ops *ops, void *private);
+int iomap_read_folio_ctx(struct iomap_readpage_ctx *ctx,
+		const struct iomap_ops *ops);
 int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops);
+void iomap_readahead_ctx(struct iomap_readpage_ctx *ctx,
+		const struct iomap_ops *ops);
 void iomap_readahead(struct readahead_control *, const struct iomap_ops *ops);
 bool iomap_is_partially_uptodate(struct folio *, size_t from, size_t count);
 struct folio *iomap_get_folio(struct iomap_iter *iter, loff_t pos, size_t len);
