@@ -20,6 +20,7 @@
 #include "xfs_errortag.h"
 #include "xfs_error.h"
 #include "xfs_fsverity.h"
+#include "xfs_attr.h"
 #include <linux/fsverity.h>
 
 struct xfs_writepage_ctx {
@@ -132,7 +133,8 @@ xfs_end_ioend(
 	else if (ioend->io_type == IOMAP_UNWRITTEN)
 		error = xfs_iomap_write_unwritten(ip, offset, size, false);
 
-	if (!error && xfs_ioend_is_append(ioend))
+	if (!error && !xfs_fsverity_in_region(ioend->io_offset) &&
+			xfs_ioend_is_append(ioend))
 		error = xfs_setfilesize(ip, ioend->io_offset, ioend->io_size);
 
 	/* This IO was to the Merkle tree region */
@@ -472,14 +474,87 @@ static const struct iomap_writeback_ops xfs_writeback_ops = {
 	.discard_folio		= xfs_discard_folio,
 };
 
+static int
+xfs_fsverity_map_blocks(
+	struct iomap_writepage_ctx *wpc,
+	struct inode		*inode,
+	loff_t			offset,
+	unsigned int		len)
+{
+	struct xfs_inode	*ip = XFS_I(inode);
+	struct xfs_mount	*mp = ip->i_mount;
+	int			error = 0;
+	int			nmap = 1;
+	loff_t			pos;
+	int			seq;
+	struct xfs_bmbt_irec	imap;
+	struct xfs_da_args	args;
+	struct xfs_merkle_key	name;
+	loff_t			xattr_name;
+
+	if (xfs_is_shutdown(mp))
+		return -EIO;
+
+	pos = (offset & XFS_FSVERITY_MTREE_MASK);
+	/* We always write one attribute block, but each block can have multiple
+	 * Merkle tree blocks */
+	ASSERT(!is_power_of_2(len));
+	xattr_name = pos & ~(len - 1);
+
+	xfs_fsverity_init_merkle_args(ip, &name, xattr_name, &args);
+
+	error = xfs_attr_get(&args);
+	if (error)
+		return error;
+
+	ASSERT(args->dp->i_af.if_format != XFS_DINODE_FMT_LOCAL);
+	xfs_ilock(ip, XFS_ILOCK_SHARED);
+	error = xfs_bmapi_read(ip, (xfs_fileoff_t)args.rmtblkno,
+			       args.rmtblkcnt, &imap, &nmap,
+			       XFS_BMAPI_ATTRFORK);
+	xfs_iunlock(ip, XFS_ILOCK_SHARED);
+	if (error)
+		return error;
+
+	/* Instead of xattr extent offset, which will be over data, we need
+	 * merkle tree offset in page cache */
+	imap.br_startoff =
+		XFS_B_TO_FSBT(mp, xattr_name | XFS_FSVERITY_MTREE_OFFSET);
+
+	seq = xfs_iomap_inode_sequence(ip, IOMAP_F_XATTR);
+	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, IOMAP_F_XATTR, seq);
+
+	trace_xfs_map_blocks_found(ip, offset, len, XFS_ATTR_FORK, &imap);
+
+	/* We want this to be separate from other IO as we will do
+	 * CRC update on IO completion */
+	wpc->iomap.flags |= IOMAP_F_NO_MERGE;
+
+	return 0;
+}
+
+static const struct iomap_writeback_ops xfs_writeback_verity_ops = {
+	.map_blocks		= xfs_fsverity_map_blocks,
+	.prepare_ioend		= xfs_prepare_ioend,
+	.discard_folio		= xfs_discard_folio,
+};
+
 STATIC int
 xfs_vm_writepages(
-	struct address_space	*mapping,
-	struct writeback_control *wbc)
+	struct address_space		*mapping,
+	struct writeback_control	*wbc)
 {
-	struct xfs_writepage_ctx wpc = { };
+	struct xfs_writepage_ctx	wpc = { };
+	struct xfs_inode		*ip = XFS_I(mapping->host);
 
-	xfs_iflags_clear(XFS_I(mapping->host), XFS_ITRUNCATED);
+	xfs_iflags_clear(ip, XFS_ITRUNCATED);
+
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION)) {
+		wbc->range_start = XFS_FSVERITY_MTREE_OFFSET;
+		wbc->range_end = LLONG_MAX;
+		return iomap_writepages_unbound(mapping, wbc, &wpc.ctx,
+						&xfs_writeback_verity_ops);
+	}
 	return iomap_writepages(mapping, wbc, &wpc.ctx, &xfs_writeback_ops);
 }
 
