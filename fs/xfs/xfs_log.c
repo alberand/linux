@@ -591,7 +591,7 @@ xfs_log_mount(
 	int			min_logfsbs;
 
 	if (!xfs_has_norecovery(mp)) {
-		xfs_notice(mp, "Mounting amazing fast V%d Filesystem %pU",
+		xfs_notice(mp, "Mounting vAndrey V%d Filesystem %pU",
 			   XFS_SB_VERSION_NUM(&mp->m_sb),
 			   &mp->m_sb.sb_uuid);
 	} else {
