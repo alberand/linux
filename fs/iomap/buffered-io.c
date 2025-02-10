@@ -502,7 +502,7 @@ static loff_t iomap_readpage_iter(const struct iomap_iter *iter,
 		folio_zero_range(folio, poff, plen);
 		if (fsverity_active(iter->inode) &&
 		    !fsverity_verify_blocks(folio, plen, poff)) {
-			folio_set_error(folio);
+			/* TODO what to use instead of folio_set_error(folio); */
 			goto done;
 		}
 
