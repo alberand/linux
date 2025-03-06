@@ -1941,7 +1941,9 @@ xfs_buffered_write_iomap_begin(
 		 * Determine the initial size of the preallocation.
 		 * We clean up any extra preallocation when the file is closed.
 		 */
-		if (xfs_has_allocsize(mp))
+		if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+			prealloc_blocks = 0;
+		else if (xfs_has_allocsize(mp))
 			prealloc_blocks = mp->m_allocsize_blocks;
 		else if (allocfork == XFS_DATA_FORK)
 			prealloc_blocks = xfs_iomap_prealloc_size(ip, allocfork,
@@ -2068,6 +2070,13 @@ xfs_buffered_write_iomap_end(
 	if (flags & IOMAP_FAULT)
 		return 0;
 
+	/*
+	 * While writing Merkle tree to disk we would not have any other
+	 * delayed allocations
+	 */
+	if (xfs_iflags_test(XFS_I(inode), XFS_VERITY_CONSTRUCTION))
+		return 0;
+
 	/* Nothing to do if we've written the entire delalloc extent */
 	start_byte = iomap_last_written_block(inode, offset, written);
 	end_byte = round_up(offset + length, i_blocksize(inode));
@@ -2112,6 +2121,7 @@ xfs_read_iomap_begin(
 	bool			shared = false;
 	unsigned int		lockmode = XFS_ILOCK_SHARED;
 	u64			seq;
+	unsigned int		iomap_flags;
 
 	ASSERT(!(flags & (IOMAP_WRITE | IOMAP_ZERO)));
 
@@ -2131,8 +2141,20 @@ xfs_read_iomap_begin(
 	if (error)
 		return error;
 	trace_xfs_iomap_found(ip, offset, length, XFS_DATA_FORK, &imap);
-	return xfs_bmbt_to_iomap(ip, iomap, &imap, flags,
-				 shared ? IOMAP_F_SHARED : 0, seq);
+	iomap_flags = shared ? IOMAP_F_SHARED : 0;
+
+	/*
+	 * We can not use fsverity_active() here. fsverity_active() checks for
+	 * verity info attached to inode. This info is based on data from a
+	 * verity descriptor. But to read verity descriptor we need to go
+	 * through read iomap path (this function). So, when descriptor is read
+	 * we will not set IOMAP_F_FSVERITY and descriptor page will be empty
+	 * (post EOF hole).
+	 */
+	if ((offset >= XFS_FSVERITY_REGION_START) && IS_VERITY(inode))
+		iomap_flags |= IOMAP_F_FSVERITY;
+
+	return xfs_bmbt_to_iomap(ip, iomap, &imap, flags, iomap_flags, seq);
 }
 
 const struct iomap_ops xfs_read_iomap_ops = {
