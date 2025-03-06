@@ -1865,6 +1865,9 @@ xfs_buffered_write_iomap_begin(
 		xfs_trim_extent(&imap, offset_fsb, end_fsb - offset_fsb);
 	}
 
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+		iomap_flags |= IOMAP_F_FSVERITY;
+
 	/*
 	 * Search the COW fork extent list even if we did not find a data fork
 	 * extent.  This serves two purposes: first this implements the

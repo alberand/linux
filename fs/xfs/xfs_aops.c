@@ -22,6 +22,7 @@
 #include "xfs_icache.h"
 #include "xfs_zone_alloc.h"
 #include "xfs_rtgroup.h"
+#include "xfs_fsverity.h"
 #include <linux/bio-integrity.h>
 
 struct xfs_writepage_ctx {
@@ -339,6 +340,7 @@ xfs_map_blocks(
 	int			retries = 0;
 	int			error = 0;
 	unsigned int		*seq;
+	unsigned int		iomap_flags = 0;
 
 	if (xfs_is_shutdown(mp))
 		return -EIO;
@@ -432,7 +434,9 @@ retry:
 	    isnullstartblock(imap.br_startblock))
 		goto allocate_blocks;
 
-	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, 0, XFS_WPC(wpc)->data_seq);
+	if (offset >= XFS_FSVERITY_REGION_START)
+		iomap_flags |= IOMAP_F_FSVERITY;
+	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, iomap_flags, XFS_WPC(wpc)->data_seq);
 	trace_xfs_map_blocks_found(ip, offset, count, whichfork, &imap);
 	return 0;
 allocate_blocks:
@@ -474,6 +478,9 @@ allocate_blocks:
 		if (cow_offset < wpc->iomap.offset + wpc->iomap.length)
 			wpc->iomap.length = cow_offset - wpc->iomap.offset;
 	}
+
+	if (offset >= XFS_FSVERITY_REGION_START)
+		wpc->iomap.flags |= IOMAP_F_FSVERITY;
 
 	ASSERT(wpc->iomap.offset <= offset);
 	ASSERT(wpc->iomap.offset + wpc->iomap.length > offset);
@@ -705,6 +712,17 @@ xfs_vm_writepages(
 			},
 		};
 
+		if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION)) {
+			wbc->range_start = XFS_FSVERITY_REGION_START;
+			wbc->range_end = LLONG_MAX;
+			wbc->nr_to_write = LONG_MAX;
+			/*
+			 * Set IOMAP_F_FSVERITY to skip initial EOF check
+			 * The following iomap->flags would be set in
+			 * xfs_map_blocks()
+			 */
+			wpc.ctx.iomap.flags |= IOMAP_F_FSVERITY;
+		}
 		return iomap_writepages(&wpc.ctx);
 	}
 }
