@@ -22,6 +22,7 @@
 #include "xfs_icache.h"
 #include "xfs_zone_alloc.h"
 #include "xfs_rtgroup.h"
+#include "xfs_fsverity.h"
 #include <linux/bio-integrity.h>
 
 struct xfs_writepage_ctx {
@@ -339,11 +340,15 @@ xfs_map_blocks(
 	int			retries = 0;
 	int			error = 0;
 	unsigned int		*seq;
+	unsigned int		iomap_flags = 0;
 
 	if (xfs_is_shutdown(mp))
 		return -EIO;
 
 	XFS_ERRORTAG_DELAY(mp, XFS_ERRTAG_WB_DELAY_MS);
+
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+		iomap_flags |= IOMAP_F_FSVERITY;
 
 	/*
 	 * COW fork blocks can overlap data fork blocks even if the blocks
@@ -432,7 +437,8 @@ retry:
 	    isnullstartblock(imap.br_startblock))
 		goto allocate_blocks;
 
-	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, 0, XFS_WPC(wpc)->data_seq);
+	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, iomap_flags,
+			  XFS_WPC(wpc)->data_seq);
 	trace_xfs_map_blocks_found(ip, offset, count, whichfork, &imap);
 	return 0;
 allocate_blocks:
@@ -704,6 +710,14 @@ xfs_vm_writepages(
 				.ops	= &xfs_writeback_ops
 			},
 		};
+
+		/*
+		 * Writeback does not work for folios past EOF, let it know that
+		 * I/O happens for fsverity metadata and this restriction need
+		 * to be skipped
+		 */
+		if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+			wpc.ctx.iomap.flags |= IOMAP_F_FSVERITY;
 
 		return iomap_writepages(&wpc.ctx);
 	}
