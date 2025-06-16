@@ -86,6 +86,8 @@ xfs_fsverity_get_descriptor(
 	uint32_t		blocksize = i_blocksize(VFS_I(ip));
 	xfs_fileoff_t		last_block;
 
+	trace_xfs_fsverity_get_descriptor(ip);
+
 	ASSERT(inode->i_flags & S_VERITY);
 	error = xfs_bmap_last_extent(NULL, ip, XFS_DATA_FORK, &rec, &is_empty);
 	if (error)
@@ -320,6 +322,8 @@ xfs_fsverity_read_merkle(
 	pgoff_t			offset =
 			index | (XFS_FSVERITY_REGION_START >> PAGE_SHIFT);
 
+	trace_xfs_fsverity_read_merkle(XFS_I(inode), offset, PAGE_SIZE);
+
 	folio = __filemap_get_folio(inode->i_mapping, offset, FGP_ACCESSED, 0);
 	if (IS_ERR(folio) || !folio_test_uptodate(folio)) {
 		DEFINE_READAHEAD(ractl, NULL, NULL, inode->i_mapping, offset);
@@ -348,6 +352,8 @@ xfs_fsverity_write_merkle(
 	struct xfs_inode	*ip = XFS_I(inode);
 	loff_t			position = pos | XFS_FSVERITY_REGION_START;
 
+	trace_xfs_fsverity_write_merkle(XFS_I(inode), pos, size);
+
 	if (position + size > inode->i_sb->s_maxbytes)
 		return -EFBIG;
 
@@ -360,6 +366,8 @@ xfs_fsverity_file_corrupt(
 	loff_t			pos,
 	size_t			len)
 {
+	trace_xfs_fsverity_file_corrupt(XFS_I(inode), pos, len);
+
 	xfs_inode_mark_sick(XFS_I(inode), XFS_SICK_INO_DATA);
 }
 
