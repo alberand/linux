@@ -130,6 +130,9 @@ xfs_inode_alloc(
 	spin_lock_init(&ip->i_ioend_lock);
 	ip->i_next_unlinked = NULLAGINO;
 	ip->i_prev_unlinked = 0;
+#ifdef CONFIG_FS_VERITY
+	ip->i_verity_info = NULL;
+#endif
 
 	return ip;
 }
