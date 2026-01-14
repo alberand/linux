@@ -1197,6 +1197,32 @@ iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *i,
 }
 EXPORT_SYMBOL_GPL(iomap_file_buffered_write);
 
+ssize_t iomap_fsverity_write(struct inode *inode, loff_t pos, size_t length,
+		const void *buf, const struct iomap_ops *ops,
+		const struct iomap_write_ops *write_ops)
+{
+	struct iov_iter		iiter;
+	struct kvec		kvec = {
+		.iov_base	= (void *)buf,
+		.iov_len	= length,
+	};
+	struct iomap_iter iter = {
+		.inode		= inode,
+		.pos		= pos,
+		.len		= length,
+		.flags		= IOMAP_WRITE,
+	};
+	ssize_t ret;
+
+	iov_iter_kvec(&iiter, WRITE, &kvec, 1, length);
+
+	while ((ret = iomap_iter(&iter, ops)) > 0)
+		iter.status = iomap_write_iter(&iter, &iiter, write_ops);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(iomap_fsverity_write);
+
 static void iomap_write_delalloc_ifs_punch(struct inode *inode,
 		struct folio *folio, loff_t start_byte, loff_t end_byte,
 		struct iomap *iomap, iomap_punch_t punch)
