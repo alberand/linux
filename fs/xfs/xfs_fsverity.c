@@ -140,8 +140,9 @@ xfs_fsverity_write_descriptor(
 {
 	int			error;
 	unsigned int		blksize = ip->i_mount->m_attr_geo->blksize;
-	u64			desc_pos = round_up(
-			XFS_FSVERITY_REGION_START | merkle_tree_size, blksize);
+	u64			tree_last_block =
+		fsverity_metadata_offset(VFS_I(ip)) + merkle_tree_size;
+	u64			desc_pos = round_up(tree_last_block, blksize);
 	u64			desc_end = desc_pos + desc_size;
 	__be32			desc_size_disk = cpu_to_be32(desc_size);
 	u64			desc_size_pos =
@@ -319,8 +320,9 @@ xfs_fsverity_read_merkle(
 	unsigned long		num_ra_pages)
 {
 	struct folio            *folio;
-	pgoff_t			offset =
-			index | (XFS_FSVERITY_REGION_START >> PAGE_SHIFT);
+	pgoff_t			metadata_idx =
+		(fsverity_metadata_offset(inode) >> PAGE_SHIFT);
+	pgoff_t			offset = index + metadata_idx;
 
 	trace_xfs_fsverity_read_merkle(XFS_I(inode), offset, PAGE_SIZE);
 
@@ -350,7 +352,7 @@ xfs_fsverity_write_merkle(
 	unsigned int		size)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
-	loff_t			position = pos | XFS_FSVERITY_REGION_START;
+	loff_t			position = pos + fsverity_metadata_offset(inode);
 
 	trace_xfs_fsverity_write_merkle(XFS_I(inode), pos, size);
 

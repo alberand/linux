@@ -434,7 +434,7 @@ retry:
 	    isnullstartblock(imap.br_startblock))
 		goto allocate_blocks;
 
-	if (offset >= XFS_FSVERITY_REGION_START)
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
 		iomap_flags |= IOMAP_F_FSVERITY;
 	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, iomap_flags, XFS_WPC(wpc)->data_seq);
 	trace_xfs_map_blocks_found(ip, offset, count, whichfork, &imap);
@@ -479,7 +479,7 @@ allocate_blocks:
 			wpc->iomap.length = cow_offset - wpc->iomap.offset;
 	}
 
-	if (offset >= XFS_FSVERITY_REGION_START)
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
 		wpc->iomap.flags |= IOMAP_F_FSVERITY;
 
 	ASSERT(wpc->iomap.offset <= offset);
@@ -713,7 +713,7 @@ xfs_vm_writepages(
 		};
 
 		if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION)) {
-			wbc->range_start = XFS_FSVERITY_REGION_START;
+			wbc->range_start = fsverity_metadata_offset(VFS_I(ip));
 			wbc->range_end = LLONG_MAX;
 			wbc->nr_to_write = LONG_MAX;
 			/*

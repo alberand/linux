@@ -2154,7 +2154,7 @@ xfs_read_iomap_begin(
 	 * we will not set IOMAP_F_FSVERITY and descriptor page will be empty
 	 * (post EOF hole).
 	 */
-	if ((offset >= XFS_FSVERITY_REGION_START) && IS_VERITY(inode))
+	if ((offset >= fsverity_metadata_offset(inode)) && IS_VERITY(inode))
 		iomap_flags |= IOMAP_F_FSVERITY;
 
 	return xfs_bmbt_to_iomap(ip, iomap, &imap, flags, iomap_flags, seq);
