@@ -105,6 +105,7 @@ struct xfs_rtgroup;
 #define XFS_SICK_INO_FORGET	(1 << 12)
 #define XFS_SICK_INO_DIRTREE	(1 << 13)  /* directory tree structure */
 #define XFS_SICK_INO_DATA	(1 << 14)  /* file data */
+#define XFS_SICK_INO_FSVERITY	(1 << 15)  /* fsverity metadata */
 
 /* Primary evidence of health problems in a given group. */
 #define XFS_SICK_FS_PRIMARY	(XFS_SICK_FS_COUNTERS | \
@@ -142,7 +143,8 @@ struct xfs_rtgroup;
 				 XFS_SICK_INO_SYMLINK | \
 				 XFS_SICK_INO_PARENT | \
 				 XFS_SICK_INO_DIRTREE | \
-				 XFS_SICK_INO_DATA)
+				 XFS_SICK_INO_DATA | \
+				 XFS_SICK_INO_FSVERITY)
 
 #define XFS_SICK_INO_ZAPPED	(XFS_SICK_INO_BMBTD_ZAPPED | \
 				 XFS_SICK_INO_BMBTA_ZAPPED | \
