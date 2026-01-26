@@ -9,6 +9,7 @@
 
 #include <linux/bio.h>
 #include <linux/export.h>
+#include <linux/pagemap.h>
 
 #define FS_VERITY_MAX_PENDING_BLOCKS 2
 
@@ -477,4 +478,9 @@ void __init fsverity_init_workqueue(void)
 						  num_online_cpus());
 	if (!fsverity_read_workqueue)
 		panic("failed to allocate fsverity_read_queue");
+}
+
+loff_t fsverity_metadata_offset(struct inode *inode)
+{
+	return roundup(i_size_read(inode), mapping_max_folio_size_supported());
 }

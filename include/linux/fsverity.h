@@ -226,6 +226,7 @@ int fsverity_ioctl_read_metadata(struct file *filp, const void __user *uarg);
 bool fsverity_verify_blocks(struct folio *folio, size_t len, size_t offset);
 void fsverity_verify_bio(struct bio *bio);
 void fsverity_enqueue_verify_work(struct work_struct *work);
+loff_t fsverity_metadata_offset(struct inode *inode);
 
 #else /* !CONFIG_FS_VERITY */
 
@@ -302,6 +303,12 @@ static inline void fsverity_verify_bio(struct bio *bio)
 static inline void fsverity_enqueue_verify_work(struct work_struct *work)
 {
 	WARN_ON_ONCE(1);
+}
+
+loff_t fsverity_metadata_offset(struct inode *inode)
+{
+	WARN_ON_ONCE(1);
+	return 0;
 }
 
 #endif	/* !CONFIG_FS_VERITY */
