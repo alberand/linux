@@ -19,10 +19,10 @@ int xfs_iomap_write_unwritten(struct xfs_inode *, xfs_off_t, xfs_off_t, bool);
 xfs_fileoff_t xfs_iomap_eof_align_last_fsb(struct xfs_inode *ip,
 		xfs_fileoff_t end_fsb);
 
-u64 xfs_iomap_inode_sequence(struct xfs_inode *ip, u16 iomap_flags);
+u64 xfs_iomap_inode_sequence(struct xfs_inode *ip, u32 iomap_flags);
 int xfs_bmbt_to_iomap(struct xfs_inode *ip, struct iomap *iomap,
 		struct xfs_bmbt_irec *imap, unsigned int mapping_flags,
-		u16 iomap_flags, u64 sequence_cookie);
+		u32 iomap_flags, u64 sequence_cookie);
 
 int xfs_zero_range(struct xfs_inode *ip, loff_t pos, loff_t len,
 		struct xfs_zone_alloc_ctx *ac, bool *did_zero);

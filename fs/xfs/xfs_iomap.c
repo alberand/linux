@@ -57,7 +57,7 @@ xfs_alert_fsblock_zero(
 u64
 xfs_iomap_inode_sequence(
 	struct xfs_inode	*ip,
-	u16			iomap_flags)
+	u32			iomap_flags)
 {
 	u64			cookie = 0;
 
@@ -102,7 +102,7 @@ xfs_bmbt_to_iomap(
 	struct iomap		*iomap,
 	struct xfs_bmbt_irec	*imap,
 	unsigned int		mapping_flags,
-	u16			iomap_flags,
+	u32			iomap_flags,
 	u64			sequence_cookie)
 {
 	struct xfs_mount	*mp = ip->i_mount;
@@ -861,7 +861,7 @@ xfs_direct_write_iomap_begin(
 	xfs_fileoff_t		orig_end_fsb = end_fsb;
 	int			nimaps = 1, error = 0;
 	bool			shared = false;
-	u16			iomap_flags = 0;
+	u32			iomap_flags = 0;
 	bool			needs_alloc;
 	unsigned int		lockmode;
 	u64			seq;
@@ -1598,7 +1598,7 @@ xfs_zoned_buffered_write_iomap_begin(
 	struct xfs_mount	*mp = ip->i_mount;
 	xfs_fileoff_t		offset_fsb = XFS_B_TO_FSBT(mp, offset);
 	xfs_fileoff_t		end_fsb = xfs_iomap_end_fsb(mp, offset, count);
-	u16			iomap_flags = IOMAP_F_SHARED;
+	u32			iomap_flags = IOMAP_F_SHARED;
 	unsigned int		lockmode = XFS_ILOCK_EXCL;
 	xfs_filblks_t		count_fsb;
 	xfs_extlen_t		indlen;
