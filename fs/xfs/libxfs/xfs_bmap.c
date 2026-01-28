@@ -41,6 +41,7 @@
 #include "xfs_inode_util.h"
 #include "xfs_rtgroup.h"
 #include "xfs_zone_alloc.h"
+#include "xfs_fsverity.h"
 
 struct kmem_cache		*xfs_bmap_intent_cache;
 
@@ -4492,6 +4493,10 @@ xfs_bmapi_convert_delalloc(
 	unsigned int		*seq)
 {
 	int			error;
+	loff_t			iomap_offset = offset;
+
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+		iomap_offset = xfs_fsverity_offset_disk_memory(ip, offset);
 
 	/*
 	 * Attempt to allocate whatever delalloc extent currently backs offset
@@ -4500,11 +4505,13 @@ xfs_bmapi_convert_delalloc(
 	 * delalloc extent if free space is sufficiently fragmented.
 	 */
 	do {
+		trace_printk("iomap->offset 0x%llx iomap->length 0x%llx offset 0x%llx",
+				iomap->offset, iomap->length, offset);
 		error = xfs_bmapi_convert_one_delalloc(ip, whichfork, offset,
 					iomap, seq);
 		if (error)
 			return error;
-	} while (iomap->offset + iomap->length <= offset);
+	} while (iomap->offset + iomap->length <= iomap_offset);
 
 	return 0;
 }

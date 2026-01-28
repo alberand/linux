@@ -31,6 +31,8 @@ int iomap_iter_advance(struct iomap_iter *iter, u64 count)
 
 static inline void iomap_iter_done(struct iomap_iter *iter)
 {
+	trace_printk("iter->iomap.offset 0x%llx iter->iomap.length 0x%llx iter->pos 0x%llx",
+			iter->iomap.offset, iter->iomap.length, iter->pos);
 	WARN_ON_ONCE(iter->iomap.offset > iter->pos);
 	WARN_ON_ONCE(iter->iomap.length == 0);
 	WARN_ON_ONCE(iter->iomap.offset + iter->iomap.length <= iter->pos);

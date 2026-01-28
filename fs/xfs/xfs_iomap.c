@@ -32,6 +32,7 @@
 #include "xfs_rtbitmap.h"
 #include "xfs_icache.h"
 #include "xfs_zone_alloc.h"
+#include "xfs_fsverity.h"
 
 #define XFS_ALLOC_ALIGN(mp, off) \
 	(((off) >> mp->m_allocsize_log) << mp->m_allocsize_log)
@@ -141,7 +142,12 @@ xfs_bmbt_to_iomap(
 		    xfs_rtbno_is_group_start(mp, imap->br_startblock))
 			iomap->flags |= IOMAP_F_BOUNDARY;
 	}
-	iomap->offset = XFS_FSB_TO_B(mp, imap->br_startoff);
+	if (imap->br_startoff >= xfs_fsverity_disk_offset(ip))
+		iomap->offset = XFS_FSB_TO_B(mp, imap->br_startoff ^
+				xfs_fsverity_disk_offset(ip) +
+					XFS_B_TO_FSBT(mp, xfs_fsverity_pos(ip)));
+	else
+		iomap->offset = XFS_FSB_TO_B(mp, imap->br_startoff);
 	iomap->length = XFS_FSB_TO_B(mp, imap->br_blockcount);
 	iomap->flags = iomap_flags;
 	if (mapping_flags & IOMAP_DAX) {
@@ -629,6 +635,8 @@ xfs_iomap_write_unwritten(
 	int		error;
 
 	trace_xfs_unwritten_convert(ip, offset, count);
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
+		offset = xfs_fsverity_pos_memory_disk(ip, offset);
 
 	offset_fsb = XFS_B_TO_FSBT(mp, offset);
 	count_fsb = XFS_B_TO_FSB(mp, (xfs_ufsize_t)offset + count);
@@ -1477,6 +1485,8 @@ xfs_bmapi_reserve_delalloc(
 	bool			use_cowextszhint =
 					whichfork == XFS_COW_FORK && !prealloc;
 
+	trace_printk("bmapi_reserve_delalloc offset 0x%llx len 0x%llx", off, len);
+
 retry:
 	/*
 	 * Cap the alloc length. Keep track of prealloc so we know whether to
@@ -1765,8 +1775,8 @@ xfs_buffered_write_iomap_begin(
 						     iomap);
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
-	xfs_fileoff_t		offset_fsb = XFS_B_TO_FSBT(mp, offset);
-	xfs_fileoff_t		end_fsb = xfs_iomap_end_fsb(mp, offset, count);
+	xfs_fileoff_t		offset_fsb;
+	xfs_fileoff_t		end_fsb;
 	struct xfs_bmbt_irec	imap, cmap;
 	struct xfs_iext_cursor	icur, ccur;
 	xfs_fsblock_t		prealloc_blocks = 0;
@@ -1788,6 +1798,13 @@ xfs_buffered_write_iomap_begin(
 	if (xfs_get_extsz_hint(ip))
 		return xfs_direct_write_iomap_begin(inode, offset, count,
 				flags, iomap, srcmap);
+
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION)) {
+		iomap_flags |= IOMAP_F_FSVERITY;
+		offset = xfs_fsverity_pos_memory_disk(ip, offset);
+	}
+	offset_fsb = XFS_B_TO_FSBT(mp, offset);
+	end_fsb = xfs_iomap_end_fsb(mp, offset, count);
 
 	error = xfs_qm_dqattach(ip);
 	if (error)
@@ -1864,9 +1881,6 @@ xfs_buffered_write_iomap_begin(
 
 		xfs_trim_extent(&imap, offset_fsb, end_fsb - offset_fsb);
 	}
-
-	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
-		iomap_flags |= IOMAP_F_FSVERITY;
 
 	/*
 	 * Search the COW fork extent list even if we did not find a data fork
@@ -2118,18 +2132,34 @@ xfs_read_iomap_begin(
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	struct xfs_bmbt_irec	imap;
-	xfs_fileoff_t		offset_fsb = XFS_B_TO_FSBT(mp, offset);
-	xfs_fileoff_t		end_fsb = xfs_iomap_end_fsb(mp, offset, length);
+	xfs_fileoff_t		offset_fsb;
+	xfs_fileoff_t		end_fsb;
 	int			nimaps = 1, error = 0;
 	bool			shared = false;
 	unsigned int		lockmode = XFS_ILOCK_SHARED;
 	u64			seq;
-	unsigned int		iomap_flags;
+	unsigned int		iomap_flags = 0;
 
 	ASSERT(!(flags & (IOMAP_WRITE | IOMAP_ZERO)));
 
 	if (xfs_is_shutdown(mp))
 		return -EIO;
+
+	/*
+	 * We can not use fsverity_active() here. fsverity_active() checks for
+	 * verity info attached to inode. This info is based on data from a
+	 * verity descriptor. But to read verity descriptor we need to go
+	 * through read iomap path (this function). So, when descriptor is read
+	 * we will not set IOMAP_F_FSVERITY and descriptor page will be empty
+	 * (post EOF hole).
+	 */
+	if ((offset >= fsverity_metadata_offset(inode)) && IS_VERITY(inode)) {
+		iomap_flags |= IOMAP_F_FSVERITY;
+		offset = xfs_fsverity_pos_memory_disk(ip, offset);
+	}
+
+	offset_fsb = XFS_B_TO_FSBT(mp, offset);
+	end_fsb = xfs_iomap_end_fsb(mp, offset, length);
 
 	error = xfs_ilock_for_iomap(ip, flags, &lockmode);
 	if (error)
@@ -2144,18 +2174,7 @@ xfs_read_iomap_begin(
 	if (error)
 		return error;
 	trace_xfs_iomap_found(ip, offset, length, XFS_DATA_FORK, &imap);
-	iomap_flags = shared ? IOMAP_F_SHARED : 0;
-
-	/*
-	 * We can not use fsverity_active() here. fsverity_active() checks for
-	 * verity info attached to inode. This info is based on data from a
-	 * verity descriptor. But to read verity descriptor we need to go
-	 * through read iomap path (this function). So, when descriptor is read
-	 * we will not set IOMAP_F_FSVERITY and descriptor page will be empty
-	 * (post EOF hole).
-	 */
-	if ((offset >= fsverity_metadata_offset(inode)) && IS_VERITY(inode))
-		iomap_flags |= IOMAP_F_FSVERITY;
+	iomap_flags |= shared ? IOMAP_F_SHARED : 0;
 
 	return xfs_bmbt_to_iomap(ip, iomap, &imap, flags, iomap_flags, seq);
 }

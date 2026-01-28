@@ -23,6 +23,32 @@
 #include <linux/fsverity.h>
 #include <linux/pagemap.h>
 
+loff_t
+xfs_fsverity_pos(struct xfs_inode *ip)
+{
+	return round_up(i_size_read(VFS_I(ip)), mapping_max_folio_size_supported());
+}
+
+xfs_fileoff_t
+xfs_fsverity_disk_offset(struct xfs_inode *ip)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+
+	return XFS_B_TO_FSBT(mp, XFS_FSVERITY_REGION_START);
+}
+
+loff_t
+xfs_fsverity_pos_memory_disk(struct xfs_inode *ip, loff_t pos)
+{
+	return (pos - xfs_fsverity_pos(ip)) | XFS_FSVERITY_REGION_START;
+}
+
+loff_t
+xfs_fsverity_offset_disk_memory(struct xfs_inode *ip, loff_t offset)
+{
+	return offset ^ XFS_FSVERITY_REGION_START + xfs_fsverity_pos(ip);
+}
+
 static int
 xfs_fsverity_read(
 	struct file	*file,

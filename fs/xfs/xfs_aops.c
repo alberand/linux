@@ -331,8 +331,8 @@ xfs_map_blocks(
 	struct xfs_inode	*ip = XFS_I(wpc->inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	ssize_t			count = i_blocksize(wpc->inode);
-	xfs_fileoff_t		offset_fsb = XFS_B_TO_FSBT(mp, offset);
-	xfs_fileoff_t		end_fsb = XFS_B_TO_FSB(mp, offset + count);
+	xfs_fileoff_t		offset_fsb;
+	xfs_fileoff_t		end_fsb;
 	xfs_fileoff_t		cow_fsb;
 	int			whichfork;
 	struct xfs_bmbt_irec	imap;
@@ -346,6 +346,13 @@ xfs_map_blocks(
 		return -EIO;
 
 	XFS_ERRORTAG_DELAY(mp, XFS_ERRTAG_WB_DELAY_MS);
+
+	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION)) {
+		iomap_flags |= IOMAP_F_FSVERITY;
+		offset = xfs_fsverity_pos_memory_disk(ip, offset);
+	}
+	offset_fsb = XFS_B_TO_FSBT(mp, offset);
+	end_fsb = XFS_B_TO_FSB(mp, offset + count);
 
 	/*
 	 * COW fork blocks can overlap data fork blocks even if the blocks
@@ -434,8 +441,6 @@ retry:
 	    isnullstartblock(imap.br_startblock))
 		goto allocate_blocks;
 
-	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
-		iomap_flags |= IOMAP_F_FSVERITY;
 	xfs_bmbt_to_iomap(ip, &wpc->iomap, &imap, 0, iomap_flags, XFS_WPC(wpc)->data_seq);
 	trace_xfs_map_blocks_found(ip, offset, count, whichfork, &imap);
 	return 0;
@@ -480,8 +485,7 @@ allocate_blocks:
 	}
 
 	if (xfs_iflags_test(ip, XFS_VERITY_CONSTRUCTION))
-		wpc->iomap.flags |= IOMAP_F_FSVERITY;
-
+		offset = xfs_fsverity_offset_disk_memory(ip, offset);
 	ASSERT(wpc->iomap.offset <= offset);
 	ASSERT(wpc->iomap.offset + wpc->iomap.length > offset);
 	trace_xfs_map_blocks_alloc(ip, offset, count, whichfork, &imap);
