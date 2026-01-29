@@ -336,12 +336,13 @@ bad:
 	return -EFSCORRUPTED;
 }
 
-static int ext4_get_verity_descriptor(struct inode *inode, void *buf,
+static int ext4_get_verity_descriptor(struct file *file, void *buf,
 				      size_t buf_size)
 {
 	size_t desc_size = 0;
 	u64 desc_pos = 0;
 	int err;
+	struct inode *inode = file_inode(file);
 
 	err = ext4_get_verity_descriptor_location(inode, &desc_size, &desc_pos);
 	if (err)

@@ -314,13 +314,14 @@ static bool validate_fsverity_descriptor(struct inode *inode,
  * Read the inode's fsverity_descriptor (with optional appended builtin
  * signature) from the filesystem, and do basic validation of it.
  */
-int fsverity_get_descriptor(struct inode *inode,
+int fsverity_get_descriptor(struct file *filp,
 			    struct fsverity_descriptor **desc_ret)
 {
 	int res;
 	struct fsverity_descriptor *desc;
+	struct inode *inode = file_inode(filp);
 
-	res = inode->i_sb->s_vop->get_verity_descriptor(inode, NULL, 0);
+	res = inode->i_sb->s_vop->get_verity_descriptor(filp, NULL, 0);
 	if (res < 0) {
 		fsverity_err(inode,
 			     "Error %d getting verity descriptor size", res);
@@ -334,7 +335,7 @@ int fsverity_get_descriptor(struct inode *inode,
 	desc = kmalloc(res, GFP_KERNEL);
 	if (!desc)
 		return -ENOMEM;
-	res = inode->i_sb->s_vop->get_verity_descriptor(inode, desc, res);
+	res = inode->i_sb->s_vop->get_verity_descriptor(filp, desc, res);
 	if (res < 0) {
 		fsverity_err(inode, "Error %d reading verity descriptor", res);
 		kfree(desc);
@@ -350,8 +351,9 @@ int fsverity_get_descriptor(struct inode *inode,
 	return 0;
 }
 
-int fsverity_ensure_verity_info(struct inode *inode)
+int fsverity_ensure_verity_info(struct file *filp)
 {
+	struct inode *inode = file_inode(filp);
 	struct fsverity_info *vi = fsverity_get_info(inode);
 	struct fsverity_descriptor *desc;
 	int err;
@@ -359,7 +361,7 @@ int fsverity_ensure_verity_info(struct inode *inode)
 	if (vi)
 		return 0;
 
-	err = fsverity_get_descriptor(inode, &desc);
+	err = fsverity_get_descriptor(filp, &desc);
 	if (err)
 		return err;
 
@@ -381,7 +383,7 @@ int __fsverity_file_open(struct inode *inode, struct file *filp)
 {
 	if (filp->f_mode & FMODE_WRITE)
 		return -EPERM;
-	return fsverity_ensure_verity_info(inode);
+	return fsverity_ensure_verity_info(filp);
 }
 EXPORT_SYMBOL_GPL(__fsverity_file_open);
 

@@ -76,9 +76,9 @@ struct fsverity_operations {
 				 size_t desc_size, u64 merkle_tree_size);
 
 	/**
-	 * Get the verity descriptor of the given inode.
+	 * Get the verity descriptor of the given file.
 	 *
-	 * @inode: an inode with the S_VERITY flag set
+	 * @filp: a file with the S_VERITY flag set
 	 * @buf: buffer in which to place the verity descriptor
 	 * @bufsize: size of @buf, or 0 to retrieve the size only
 	 *
@@ -89,7 +89,7 @@ struct fsverity_operations {
 	 *
 	 * Return: the size on success, -errno on failure
 	 */
-	int (*get_verity_descriptor)(struct inode *inode, void *buf,
+	int (*get_verity_descriptor)(struct file *filp, void *buf,
 				     size_t bufsize);
 
 	/**
@@ -196,7 +196,7 @@ int __fsverity_file_open(struct inode *inode, struct file *filp);
 int __fsverity_prepare_setattr(struct dentry *dentry, struct iattr *attr);
 void __fsverity_cleanup_inode(struct inode *inode);
 
-int fsverity_ensure_verity_info(struct inode *inode);
+int fsverity_ensure_verity_info(struct file *filp);
 
 /**
  * fsverity_cleanup_inode() - free the inode's verity info, if present

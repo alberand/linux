@@ -1756,7 +1756,7 @@ xchk_inode_setup_verity(
 	if (!IS_VERITY(VFS_I(sc->ip)))
 		return 0;
 
-	error = fsverity_ensure_verity_info(VFS_I(sc->ip));
+	error = fsverity_ensure_verity_info(sc->file);
 	switch (error) {
 	case 0:
 		/* fsverity is active */

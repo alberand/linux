@@ -216,13 +216,14 @@ cleanup:
 	return err ?: err2;
 }
 
-static int f2fs_get_verity_descriptor(struct inode *inode, void *buf,
+static int f2fs_get_verity_descriptor(struct file *file, void *buf,
 				      size_t buf_size)
 {
 	struct fsverity_descriptor_location dloc;
 	int res;
 	u32 size;
 	u64 pos;
+	struct inode *inode = file_inode(file);
 
 	/* Get the descriptor location */
 	res = f2fs_getxattr(inode, F2FS_XATTR_INDEX_VERITY,

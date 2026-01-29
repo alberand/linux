@@ -5125,12 +5125,13 @@ static int process_verity(struct send_ctx *sctx)
 	int ret = 0;
 	struct btrfs_inode *inode;
 	struct fs_path *p;
+	struct file *filp = sctx->send_filp;
 
 	inode = btrfs_iget(sctx->cur_ino, sctx->send_root);
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
-	ret = btrfs_get_verity_descriptor(&inode->vfs_inode, NULL, 0);
+	ret = btrfs_get_verity_descriptor(filp, NULL, 0);
 	if (ret < 0)
 		goto iput;
 
@@ -5147,7 +5148,7 @@ static int process_verity(struct send_ctx *sctx)
 		}
 	}
 
-	ret = btrfs_get_verity_descriptor(&inode->vfs_inode, sctx->verity_descriptor, ret);
+	ret = btrfs_get_verity_descriptor(filp, sctx->verity_descriptor, ret);
 	if (ret < 0)
 		goto iput;
 

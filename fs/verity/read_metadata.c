@@ -95,14 +95,14 @@ static int fsverity_read_buffer(void __user *dst, u64 offset, int length,
 	return length;
 }
 
-static int fsverity_read_descriptor(struct inode *inode,
+static int fsverity_read_descriptor(struct file *filp,
 				    void __user *buf, u64 offset, int length)
 {
 	struct fsverity_descriptor *desc;
 	size_t desc_size;
 	int res;
 
-	res = fsverity_get_descriptor(inode, &desc);
+	res = fsverity_get_descriptor(filp, &desc);
 	if (res)
 		return res;
 
@@ -116,13 +116,13 @@ static int fsverity_read_descriptor(struct inode *inode,
 	return res;
 }
 
-static int fsverity_read_signature(struct inode *inode,
+static int fsverity_read_signature(struct file *filp,
 				   void __user *buf, u64 offset, int length)
 {
 	struct fsverity_descriptor *desc;
 	int res;
 
-	res = fsverity_get_descriptor(inode, &desc);
+	res = fsverity_get_descriptor(filp, &desc);
 	if (res)
 		return res;
 
@@ -185,9 +185,9 @@ int fsverity_ioctl_read_metadata(struct file *filp, const void __user *uarg)
 		return fsverity_read_merkle_tree(inode, vi, buf, arg.offset,
 						 length);
 	case FS_VERITY_METADATA_TYPE_DESCRIPTOR:
-		return fsverity_read_descriptor(inode, buf, arg.offset, length);
+		return fsverity_read_descriptor(filp, buf, arg.offset, length);
 	case FS_VERITY_METADATA_TYPE_SIGNATURE:
-		return fsverity_read_signature(inode, buf, arg.offset, length);
+		return fsverity_read_signature(filp, buf, arg.offset, length);
 	default:
 		return -EINVAL;
 	}

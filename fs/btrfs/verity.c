@@ -648,7 +648,7 @@ rollback:
 /*
  * fsverity op that gets the struct fsverity_descriptor.
  *
- * @inode:     inode to get the descriptor of
+ * @inode:     file to get the descriptor of
  * @buf:       output buffer for the descriptor contents
  * @buf_size:  size of the output buffer. 0 to query the size
  *
@@ -658,8 +658,9 @@ rollback:
  *
  * Returns the size on success or a negative error code on failure.
  */
-int btrfs_get_verity_descriptor(struct inode *inode, void *buf, size_t buf_size)
+int btrfs_get_verity_descriptor(struct file *file, void *buf, size_t buf_size)
 {
+	struct inode *inode = file_inode(file);
 	u64 true_size;
 	int ret = 0;
 	struct btrfs_verity_descriptor_item item;

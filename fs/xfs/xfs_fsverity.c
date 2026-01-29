@@ -25,17 +25,18 @@
 
 static int
 xfs_fsverity_read(
-	struct inode	*inode,
+	struct file	*file,
 	void		*buf,
 	size_t		count,
 	loff_t		pos)
 {
 	struct folio	*folio;
 	size_t		n;
+	struct inode	*inode = file_inode(file);
 
 	while (count) {
 		folio = read_mapping_folio(inode->i_mapping, pos >> PAGE_SHIFT,
-					 NULL);
+					 file);
 		if (IS_ERR(folio))
 			return PTR_ERR(folio);
 
@@ -70,10 +71,11 @@ xfs_fsverity_write(
  */
 static int
 xfs_fsverity_get_descriptor(
-	struct inode		*inode,
+	struct file		*file,
 	void			*buf,
 	size_t			buf_size)
 {
+	struct inode		*inode = file_inode(file);
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
 	__be32			d_desc_size;
@@ -99,7 +101,7 @@ xfs_fsverity_get_descriptor(
 	last_block = (rec.br_startoff + rec.br_blockcount);
 	desc_size_pos = (last_block << ip->i_mount->m_sb.sb_blocklog) -
 			sizeof(__be32);
-	error = xfs_fsverity_read(inode, (char *)&d_desc_size,
+	error = xfs_fsverity_read(file, (char *)&d_desc_size,
 				  sizeof(d_desc_size), desc_size_pos);
 	if (error)
 		return error;
@@ -124,7 +126,7 @@ xfs_fsverity_get_descriptor(
 	}
 
 	desc_pos = round_down(desc_size_pos - desc_size, blocksize);
-	error = xfs_fsverity_read(inode, buf, desc_size, desc_pos);
+	error = xfs_fsverity_read(file, buf, desc_size, desc_pos);
 	if (error)
 		return error;
 

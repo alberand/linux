@@ -131,7 +131,7 @@ void fsverity_set_info(struct inode *inode, struct fsverity_info *vi);
 
 void fsverity_free_info(struct fsverity_info *vi);
 
-int fsverity_get_descriptor(struct inode *inode,
+int fsverity_get_descriptor(struct file *filp,
 			    struct fsverity_descriptor **desc_ret);
 
 void __init fsverity_init_info_cache(void);
