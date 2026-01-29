@@ -431,12 +431,18 @@ struct iomap_ioend {
 	loff_t			io_offset;	/* offset in the file */
 	sector_t		io_sector;	/* start sector of ioend */
 	void			*io_private;	/* file system private data */
+	struct work_struct	io_work;	/* work for ioend processing */
 	struct bio		io_bio;		/* MUST BE LAST! */
 };
 
 static inline struct iomap_ioend *iomap_ioend_from_bio(struct bio *bio)
 {
 	return container_of(bio, struct iomap_ioend, io_bio);
+}
+
+static inline struct iomap_ioend *iomap_ioend_from_work(struct work_struct *work)
+{
+	return container_of(work, struct iomap_ioend, io_work);
 }
 
 struct iomap_writeback_ops {
