@@ -779,7 +779,7 @@ xfs_vm_read_folio(
 {
 	struct iomap_read_folio_ctx	ctx = {
 		.cur_folio	= folio,
-		.ops		= xfs_bio_read_ops(XFS_I(file->f_mapping->host)),
+		.ops		= xfs_bio_read_ops(XFS_I(folio->mapping->host)),
 	};
 
 	iomap_read_folio(&xfs_read_iomap_ops, &ctx);
