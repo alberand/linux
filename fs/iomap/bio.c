@@ -6,6 +6,7 @@
 #include <linux/bio-integrity.h>
 #include <linux/iomap.h>
 #include <linux/pagemap.h>
+#include <linux/fsverity.h>
 #include "internal.h"
 #include "trace.h"
 
@@ -31,6 +32,14 @@ static void iomap_read_end_io(struct bio *bio)
 
 u32 iomap_finish_ioend_buffered_read(struct iomap_ioend *ioend)
 {
+	if (!ioend->io_error &&
+	    IS_VERITY(ioend->io_inode) &&
+	    ioend->io_offset < fsverity_metadata_offset(ioend->io_inode) &&
+	    bio_op(&ioend->io_bio) == REQ_OP_READ) {
+		printk("doing verity");
+		fsverity_verify_bio(&ioend->io_bio);
+	}
+
 	return __iomap_read_end_io(&ioend->io_bio, ioend->io_error);
 }
 

@@ -7,6 +7,7 @@
 #include <linux/list_sort.h>
 #include <linux/pagemap.h>
 #include <linux/writeback.h>
+#include <linux/fsverity.h>
 #include "internal.h"
 #include "trace.h"
 
