@@ -763,6 +763,32 @@ xfs_vm_bmap(
 }
 
 static void
+xfs_read_work_end_io(
+	struct work_struct	*work)
+{
+	struct iomap_ioend	*ioend = iomap_ioend_from_work(work);
+	struct bio		*bio = &ioend->io_bio;
+
+	fsverity_verify_bio(bio);
+	xfs_end_bio(bio);
+}
+
+static void
+xfs_end_bio_fsverity(
+	struct bio		*bio)
+{
+	struct iomap_ioend	*ioend = iomap_ioend_from_bio(bio);
+	struct xfs_inode	*ip = XFS_I(ioend->io_inode);
+
+	if (ioend->io_offset < fsverity_metadata_offset(VFS_I(ip))) {
+		INIT_WORK(&ioend->io_work, &xfs_read_work_end_io);
+		fsverity_enqueue_verify_work(&ioend->io_work);
+	} else {
+		xfs_end_bio(bio);
+	}
+}
+
+static void
 xfs_bio_submit_read(
 	const struct iomap_iter		*iter,
 	struct iomap_read_folio_ctx	*ctx)
@@ -771,7 +797,10 @@ xfs_bio_submit_read(
 
 	/* delay read completions to the ioend workqueue */
 	iomap_init_ioend(iter->inode, bio, ctx->read_ctx_file_offset, 0);
-	bio->bi_end_io = xfs_end_bio;
+	if (IS_VERITY(iter->inode))
+		bio->bi_end_io = xfs_end_bio_fsverity;
+	else
+		bio->bi_end_io = xfs_end_bio;
 	submit_bio(bio);
 }
 
@@ -786,6 +815,8 @@ xfs_bio_read_ops(
 	const struct xfs_inode		*ip)
 {
 	if (bdev_has_integrity_csum(xfs_inode_buftarg(ip)->bt_bdev))
+		return &xfs_bio_read_integrity_ops;
+	if (IS_VERITY(VFS_IC(ip)))
 		return &xfs_bio_read_integrity_ops;
 	return &iomap_bio_read_ops;
 }
